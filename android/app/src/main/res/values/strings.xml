@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">DabbyMarket</string>
+    <string name="title_activity_main">DabbyMarket</string>
+    <string name="package_name">cm.dabby.market</string>
+    <string name="custom_url_scheme">cm.dabby.market</string>
+</resources>
