@@ -101,7 +101,7 @@ export default function AuthPage() {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Votre nom complet"
-                    className="mt-1.5 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition-colors focus:border-amber-400 focus:bg-white"
+                    className="mt-1.5 w-full rounded-xl border border-amber-200 bg-amber-50/20 px-4 py-3 text-sm text-amber-900 outline-none transition-colors placeholder:text-amber-300/70 focus:border-amber-500 focus:bg-amber-50/40 focus:ring-2 focus:ring-amber-200/50"
                   />
                 </div>
               )}
@@ -116,7 +116,7 @@ export default function AuthPage() {
                     onKeyDown={(e) => e.key === "Enter" && submit()}
                     inputMode="tel"
                     placeholder="6 96 43 07 23"
-                    className="w-full bg-transparent py-3 text-sm outline-none"
+                    className="w-full bg-transparent py-3 text-sm text-amber-900 outline-none placeholder:text-amber-300/70"
                   />
                 </div>
                 {willBeAdmin && (
@@ -135,7 +135,7 @@ export default function AuthPage() {
                     onKeyDown={(e) => e.key === "Enter" && submit()}
                     type={showPassword ? "text" : "password"}
                     placeholder="••••••••"
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pr-11 text-sm outline-none transition-colors focus:border-amber-400 focus:bg-white"
+                    className="w-full rounded-xl border border-amber-200 bg-amber-50/20 px-4 py-3 pr-11 text-sm text-amber-900 outline-none transition-colors placeholder:text-amber-300/70 focus:border-amber-500 focus:bg-amber-50/40 focus:ring-2 focus:ring-amber-200/50"
                   />
                   <button
                     type="button"
