@@ -3,6 +3,7 @@ import { Star, MapPin, ArrowLeft, MessageCircle, Store, Loader2, Eye } from "luc
 import { useState } from "react";
 import { VerifiedBadge, ConditionBadge } from "@/components/product-card";
 import { ShopHeaderSkeleton } from "@/components/skeletons";
+import { GuestPrompt } from "@/components/guest-prompt";
 import { BottomNav } from "@/components/bottom-nav";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { useAuth } from "@/lib/auth";
@@ -59,6 +60,7 @@ export default function BoutiquePage() {
   useRecordView("shop", id);
   const { data: viewsCount = 0 } = useViewsCount("shop", id);
   const [tab, setTab] = useState<"produits" | "avis" | "apropos" | "loc">("produits");
+  const [showGuestPrompt, setShowGuestPrompt] = useState(false);
 
   if (isLoading) {
     return <ShopHeaderSkeleton />;
@@ -76,10 +78,15 @@ export default function BoutiquePage() {
   const avgRating = reviews.length ? (reviews.reduce((s: number, r: any) => s + r.rating, 0) / reviews.length).toFixed(1) : null;
 
   async function handleContact() {
-    if (!session) return toast.error(t("carte_loginToContact"));
+    if (!session) return setShowGuestPrompt(true);
     if (session.user.id === shop.owner_id) return toast.error(t("boutique_ownShopError"));
     const conv = await startConversation.mutateAsync({ sellerId: shop.owner_id, shopId: shop.id });
     navigate(`/messages/${conv.id}`);
+  }
+
+  function handleFollow() {
+    if (!session) return setShowGuestPrompt(true);
+    toggleFollow.mutate(following);
   }
 
   return (
@@ -223,7 +230,7 @@ export default function BoutiquePage() {
             <MessageCircle size={16} /> {t("boutique_contact")}
           </button>
           <button
-            onClick={() => toggleFollow.mutate(following)}
+            onClick={handleFollow}
             className={cn(
               "inline-flex items-center justify-center gap-2 rounded-xl border py-3 text-sm font-semibold",
               following ? "border-primary bg-primary/10 text-primary" : "border-border bg-card",
@@ -235,6 +242,7 @@ export default function BoutiquePage() {
       </div>
 
       <div className="lg:hidden"><BottomNav /></div>
+      <GuestPrompt open={showGuestPrompt} onClose={() => setShowGuestPrompt(false)} />
       </div>
     </div>
   );

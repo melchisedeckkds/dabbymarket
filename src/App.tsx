@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useEffect, lazy, Suspense } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { AppProvider } from "@/lib/app-store";
@@ -8,6 +8,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { LaGueriteChat } from "@/components/la-guerite-chat";
 import { OfflineBanner } from "@/components/offline-banner";
 import { OnboardingTour } from "@/components/onboarding-tour";
+import { SplashScreen } from "@/components/splash-screen";
 import { registerPwa } from "@/lib/pwa";
 
 // Chaque page est chargée à la demande (code-splitting) : le navigateur ne
@@ -33,6 +34,11 @@ function FullScreenLoader() {
   return <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">Chargement…</div>;
 }
 
+// Réservé aux pages qui exigent réellement un compte (publier, messagerie,
+// compte, admin, recharge...). Le Marché, la Carte, les fiches boutique/
+// produit et les CGU restent consultables sans connexion — voir le mode
+// visiteur : les actions (aimer, contacter, publier...) invitent alors à se
+// connecter au moment précis où l'utilisateur les déclenche, via <GuestPrompt>.
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth();
   if (loading) return <FullScreenLoader />;
@@ -54,110 +60,24 @@ function AppRoutes() {
         <Suspense fallback={<FullScreenLoader />}>
           <Routes location={location}>
             <Route path="/auth" element={<AuthPage />} />
-            <Route
-              path="/"
-              element={
-                <RequireAuth>
-                  <MarchePage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/carte"
-              element={
-                <RequireAuth>
-                  <CartePage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/boutique/:id"
-              element={
-                <RequireAuth>
-                  <BoutiquePage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/produit/:id"
-              element={
-                <RequireAuth>
-                  <ProduitPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/creer-boutique"
-              element={
-                <RequireAuth>
-                  <CreerBoutiquePage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/publier"
-              element={
-                <RequireAuth>
-                  <PublierPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/messages"
-              element={
-                <RequireAuth>
-                  <MessagesPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/messages/:id"
-              element={
-                <RequireAuth>
-                  <MessagesPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/compte"
-              element={
-                <RequireAuth>
-                  <ComptePage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/admin"
-              element={
-                <RequireAuth>
-                  <AdminPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/recharge"
-              element={
-                <RequireAuth>
-                  <RechargePage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/suggestions"
-              element={
-                <RequireAuth>
-                  <SuggestionsPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/cgu"
-              element={
-                <RequireAuth>
-                  <CguPage />
-                </RequireAuth>
-              }
-            />
+
+            {/* Consultables sans compte (mode visiteur) */}
+            <Route path="/" element={<MarchePage />} />
+            <Route path="/carte" element={<CartePage />} />
+            <Route path="/boutique/:id" element={<BoutiquePage />} />
+            <Route path="/produit/:id" element={<ProduitPage />} />
+            <Route path="/cgu" element={<CguPage />} />
+
+            {/* Nécessitent un compte */}
+            <Route path="/creer-boutique" element={<RequireAuth><CreerBoutiquePage /></RequireAuth>} />
+            <Route path="/publier" element={<RequireAuth><PublierPage /></RequireAuth>} />
+            <Route path="/messages" element={<RequireAuth><MessagesPage /></RequireAuth>} />
+            <Route path="/messages/:id" element={<RequireAuth><MessagesPage /></RequireAuth>} />
+            <Route path="/compte" element={<RequireAuth><ComptePage /></RequireAuth>} />
+            <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
+            <Route path="/recharge" element={<RequireAuth><RechargePage /></RequireAuth>} />
+            <Route path="/suggestions" element={<RequireAuth><SuggestionsPage /></RequireAuth>} />
+
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
@@ -173,8 +93,15 @@ function AuthedExtras() {
 }
 
 export default function App() {
+  const [showSplash, setShowSplash] = useState(true);
+
   useEffect(() => {
     registerPwa();
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setShowSplash(false), 4000);
+    return () => clearTimeout(timer);
   }, []);
 
   return (
@@ -182,6 +109,7 @@ export default function App() {
       <AuthProvider>
         <AppProvider>
           <BrowserRouter>
+            <AnimatePresence>{showSplash && <SplashScreen key="splash" />}</AnimatePresence>
             <OfflineBanner />
             <AppRoutes />
             <LaGueriteChat />

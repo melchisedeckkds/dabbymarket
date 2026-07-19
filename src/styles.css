@@ -74,7 +74,7 @@
 }
 
 .light {
-  --background: #faf8f3;
+  --background: #fbf3df;
   --foreground: #1a1a1a;
   --card: #ffffff;
   --card-foreground: #1a1a1a;
@@ -83,7 +83,7 @@
   --primary: #b8860b;
   --primary-foreground: #ffffff;
   --secondary: #ffffff;
-  --secondary-foreground: #1a1a1a;
+  --secondary-foreground: #1a1204;
   --muted: #f2ede2;
   --muted-foreground: #6b6b6b;
   --accent: #efe8d6;

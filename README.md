@@ -16,6 +16,7 @@ empaquetage Android via Capacitor.
    - `0005_ai_rate_limit.sql`
    - `0006_unread_messages.sql`
    - `0007_auto_payment_confirmation.sql`
+   - `0008_fix_phone_trigger.sql`
 3. Dans **Project Settings → API**, récupère `Project URL` et `anon public key`.
 
 ## 2. Configurer l'app
@@ -82,7 +83,36 @@ dans Android Studio. De là : Build → Generate Signed App Bundle / APK.
 Le projet Android est déjà présent dans `android/` avec les permissions
 nécessaires (localisation, caméra/galerie pour les photos, internet).
 
-## Notes importantes
+## ⚠️ Réglage Supabase indispensable — sans lui, PERSONNE ne peut se connecter
+
+Par défaut, un nouveau projet Supabase exige une confirmation par e-mail
+après l'inscription. Or DabbyMarket utilise une adresse e-mail interne
+fictive (voir `src/lib/auth.tsx`) pour permettre l'inscription par numéro
+de téléphone sans SMS payant — cette adresse ne peut jamais recevoir de
+vrai e-mail. **Si ce réglage reste activé, absolument aucun compte ne
+pourra jamais se connecter après inscription** (erreur "Invalid login
+credentials" à chaque tentative, quel que soit le numéro).
+
+**À faire une seule fois, immédiatement après la création du projet :**
+1. Tableau de bord Supabase → **Authentication** → **Providers** (ou **Sign In / Providers** selon la version) → **Email**.
+2. Désactive l'option **"Confirm email"** (parfois nommée **"Enable email confirmations"**).
+3. Sauvegarde.
+
+Si ton site est déjà en ligne et que des utilisateurs obtiennent une
+erreur de connexion, c'est très probablement ce réglage qu'il faut
+changer — aucune modification de code n'est nécessaire pour ça.
+
+## Corrections apportées
+
+- **Numéro de téléphone mal enregistré** : un vrai bug a été trouvé et
+  corrigé (migration `0008_fix_phone_trigger.sql`) — le profil enregistrait
+  parfois l'e-mail interne fictif à la place du vrai numéro de téléphone.
+  Exécute cette migration même si le projet est déjà en production.
+- **Numéros internationaux** : l'inscription n'est plus limitée au
+  Cameroun (+237) — un sélecteur de pays est disponible pour n'importe
+  quel indicatif dans le monde.
+
+
 
 - **Authentification** : par numéro de téléphone + mot de passe (pas de SMS
   payant). Le jour où tu veux un vrai code OTP par SMS, il faudra configurer

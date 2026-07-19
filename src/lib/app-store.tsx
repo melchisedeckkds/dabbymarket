@@ -2,9 +2,9 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { useUnreadCount } from "./queries";
 import { translations, type Lang, type TranslationKey } from "./i18n";
 
-// Petites préférences transverses (thème, langue) — stockées localement par
-// appareil, ce ne sont pas des données partagées entre utilisateurs donc
-// pas besoin de Supabase ici.
+// Petites préférences transverses (thème, langue, mode données réduites) —
+// stockées localement par appareil, ce ne sont pas des données partagées
+// entre utilisateurs donc pas besoin de Supabase ici.
 type AppContextValue = {
   theme: "dark" | "light";
   toggleTheme: () => void;
@@ -12,13 +12,16 @@ type AppContextValue = {
   setLang: (l: Lang) => void;
   t: (key: TranslationKey) => string;
   unreadCount: number;
+  dataSaver: boolean;
+  toggleDataSaver: () => void;
 };
 
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<"dark" | "light">(() => (localStorage.getItem("dm-theme") as "dark" | "light") || "dark");
+  const [theme, setTheme] = useState<"dark" | "light">(() => (localStorage.getItem("dm-theme") as "dark" | "light") || "light");
   const [lang, setLangState] = useState<Lang>(() => (localStorage.getItem("dm-lang") as Lang) || "fr");
+  const [dataSaver, setDataSaver] = useState<boolean>(() => localStorage.getItem("dm-data-saver") !== "0");
   const { data: unreadCount = 0 } = useUnreadCount();
 
   useEffect(() => {
@@ -31,6 +34,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     document.documentElement.lang = lang;
   }, [lang]);
 
+  useEffect(() => {
+    // Lu directement par compressImage() (src/lib/image.ts) — pas besoin de
+    // faire circuler cette préférence par props jusqu'à chaque formulaire.
+    localStorage.setItem("dm-data-saver", dataSaver ? "1" : "0");
+  }, [dataSaver]);
+
   // Le décompte précis (messages réellement non lus) vient désormais de
   // useUnreadCount(), basé sur la fonction SQL unread_messages_count().
 
@@ -40,11 +49,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   function setLang(l: Lang) {
     setLangState(l);
   }
+  function toggleDataSaver() {
+    setDataSaver((d) => !d);
+  }
 
   const t = useCallback((key: TranslationKey) => translations[lang][key] ?? translations.fr[key] ?? key, [lang]);
 
   return (
-    <AppContext.Provider value={{ theme, toggleTheme, lang, setLang, t, unreadCount }}>
+    <AppContext.Provider value={{ theme, toggleTheme, lang, setLang, t, unreadCount, dataSaver, toggleDataSaver }}>
       {children}
     </AppContext.Provider>
   );

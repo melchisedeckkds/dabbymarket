@@ -12,6 +12,8 @@ import { useAuth } from "@/lib/auth";
 import { useShops, useProducts, useReviews, useStartConversation, useSendMessage } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { useEscapeToClose } from "@/hooks/use-escape-to-close";
+import { COUNTRY_CODES, getCountryFromPhone } from "@/lib/country-codes";
+import { GuestPrompt } from "@/components/guest-prompt";
 import { toast } from "sonner";
 
 const MapView = lazy(() => import("@/components/map-view"));
@@ -61,6 +63,7 @@ function useGeolocation() {
 
 export default function CartePage() {
   const { theme, t } = useApp();
+  const { profile } = useAuth();
   const { location, geoStatus, requestLocation } = useGeolocation();
   const { data: shops = [], isLoading } = useShops();
   const [selected, setSelected] = useState<any | null>(null);
@@ -73,6 +76,11 @@ export default function CartePage() {
   const [showLocateSheet, setShowLocateSheet] = useState(false);
   useEscapeToClose(showLocateSheet, () => setShowLocateSheet(false));
   useEscapeToClose(!!selected, () => setSelected(null));
+
+  // Oriente la carte vers le pays de l'utilisateur (déduit de son numéro de
+  // téléphone) dès l'ouverture, avant même qu'il n'active sa position
+  // précise — voir la fonction FitToShops dans map-view.tsx.
+  const countryCenter = getCountryFromPhone(profile?.phone)?.center ?? COUNTRY_CODES[0].center;
 
   useEffect(() => setMounted(true), []);
 
@@ -130,6 +138,7 @@ export default function CartePage() {
               user={location}
               theme={theme}
               focus={focus}
+              countryCenter={countryCenter}
               onMapClick={() => setSelected(null)}
             />
           </Suspense>
@@ -316,18 +325,19 @@ function ShopSheet({
   const sendMessage = useSendMessage();
   const previews = products.slice(0, 3);
   const avgRating = reviews.length ? (reviews.reduce((s: number, r: any) => s + r.rating, 0) / reviews.length).toFixed(1) : null;
+  const [showGuestPrompt, setShowGuestPrompt] = useState(false);
 
   useEscapeToClose(true, onClose);
 
   async function handleContact() {
-    if (!session) return toast.error(t("carte_loginToContact"));
+    if (!session) return setShowGuestPrompt(true);
     if (session.user.id === shop.owner_id) return toast.error(t("carte_ownShop"));
     const conv = await startConversation.mutateAsync({ sellerId: shop.owner_id, shopId: shop.id });
     navigate(`/messages/${conv.id}`);
   }
 
   async function handleDeliveryRequest() {
-    if (!session) return toast.error(t("carte_loginToDeliver"));
+    if (!session) return setShowGuestPrompt(true);
     if (!userLocation) return toast.error(t("carte_enableLocationFirst"));
     const conv = await startConversation.mutateAsync({ sellerId: shop.owner_id, shopId: shop.id });
     await sendMessage.mutateAsync({
@@ -406,6 +416,7 @@ function ShopSheet({
       <Link to={`/boutique/${shop.id}`} className="mt-3 block rounded-xl border border-border bg-background py-2.5 text-center text-xs font-semibold">
         {t("carte_viewShop")}
       </Link>
+      <GuestPrompt open={showGuestPrompt} onClose={() => setShowGuestPrompt(false)} />
     </div>
   );
 }

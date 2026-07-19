@@ -4,13 +4,16 @@ import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { useAuth } from "@/lib/auth";
 import { useApp } from "@/lib/app-store";
-import { ShieldCheck, Loader2, Eye, EyeOff, Gift } from "lucide-react";
+import { COUNTRY_CODES } from "@/lib/country-codes";
+import { ShieldCheck, Loader2, Eye, EyeOff } from "lucide-react";
 
 export default function AuthPage() {
   const nav = useNavigate();
   const { signIn, signUp } = useAuth();
   const { t } = useApp();
   const [mode, setMode] = useState<"login" | "signup">("login");
+  const [countryDial, setCountryDial] = useState(COUNTRY_CODES[0].dial); // Cameroun par défaut
+  const [customDial, setCustomDial] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -18,15 +21,19 @@ export default function AuthPage() {
   const [showPassword, setShowPassword] = useState(false);
 
   const digits = phone.replace(/\D/g, "");
-  const willBeAdmin = digits.endsWith("696430723");
+  const dial = countryDial === "+" ? customDial.replace(/[^\d+]/g, "") : countryDial;
+  const willBeAdmin = dial === "+237" && digits.endsWith("696430723");
 
   async function submit() {
-    if (digits.length < 8) return toast.error(t("auth_invalidPhone"));
+    if (digits.length < 6) return toast.error(t("auth_invalidPhone"));
+    if (!dial || dial === "+") return toast.error(t("auth_invalidPhone"));
     if (password.length < 6) return toast.error(t("auth_passwordTooShort"));
     if (mode === "signup" && name.trim().length < 2) return toast.error(t("auth_nameRequired"));
 
     setLoading(true);
-    const full = "+237" + digits.replace(/^237/, "");
+    const dialDigitsOnly = dial.replace(/\D/g, "");
+    const localDigits = digits.startsWith(dialDigitsOnly) ? digits.slice(dialDigitsOnly.length) : digits;
+    const full = `${dial}${localDigits}`;
     const result =
       mode === "signup" ? await signUp(full, password, name.trim()) : await signIn(full, password);
     setLoading(false);
@@ -56,13 +63,11 @@ export default function AuthPage() {
             transition={{ duration: 0.6 }}
             className="flex flex-col items-center text-center"
           >
-            {/* Logo image */}
             <img
               src="/logo-auth.png"
               alt="DABBY MARKET"
               className="h-64 w-auto object-contain drop-shadow-xl"
             />
-            
           </motion.div>
         </div>
 
@@ -108,15 +113,35 @@ export default function AuthPage() {
 
               <div>
                 <label className="text-xs font-semibold text-gray-600">{t("auth_phone")}</label>
-                <div className="mt-1.5 flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 transition-colors focus-within:border-amber-400 focus-within:bg-white">
-                  <span className="text-sm font-semibold text-gray-500">+237</span>
+                <div className="mt-1.5 flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-2 transition-colors focus-within:border-amber-400 focus-within:bg-white">
+                  <select
+                    value={countryDial}
+                    onChange={(e) => setCountryDial(e.target.value)}
+                    className="max-w-[92px] shrink-0 bg-transparent py-3 text-sm font-semibold text-gray-600 outline-none"
+                    aria-label={t("auth_country")}
+                  >
+                    {COUNTRY_CODES.map((c) => (
+                      <option key={c.code} value={c.dial}>
+                        {c.flag} {c.dial === "+" ? "" : c.dial}
+                      </option>
+                    ))}
+                  </select>
+                  {countryDial === "+" && (
+                    <input
+                      value={customDial}
+                      onChange={(e) => setCustomDial(e.target.value)}
+                      inputMode="tel"
+                      placeholder="+..."
+                      className="w-14 shrink-0 border-l border-gray-200 bg-transparent py-3 pl-2 text-sm font-semibold outline-none"
+                    />
+                  )}
                   <input
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && submit()}
                     inputMode="tel"
                     placeholder="6 96 43 07 23"
-                    className="w-full bg-transparent py-3 text-sm text-amber-900 outline-none placeholder:text-amber-300/70"
+                    className="w-full min-w-0 border-l border-gray-200 bg-transparent py-3 pl-2 text-sm text-amber-900 outline-none placeholder:text-amber-300/70"
                   />
                 </div>
                 {willBeAdmin && (

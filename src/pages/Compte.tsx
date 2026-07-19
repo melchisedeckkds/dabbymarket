@@ -66,7 +66,7 @@ function useMyShopStats(shopIds: string[]) {
 }
 
 export default function ComptePage() {
-  const { theme, toggleTheme, lang, setLang, t } = useApp();
+  const { theme, toggleTheme, lang, setLang, dataSaver, toggleDataSaver, t } = useApp();
   const { profile, signOut } = useAuth();
   const navigate = useNavigate();
   const [tab, setTab] = useState<"achats" | "boutique">("achats");
@@ -259,8 +259,11 @@ export default function ComptePage() {
           <Row to="/cgu" icon={FileText} label={t("compte_terms")} />
           <Row onClick={toggleTheme} icon={theme === "dark" ? Moon : Sun} label={theme === "dark" ? t("compte_nightMode") : t("compte_dayMode")} />
           <Row icon={Languages} label={`${t("compte_language")} : ${lang === "fr" ? "Français" : "English"}`} onClick={() => setLang(lang === "fr" ? "en" : "fr")} />
-          <Row icon={TrendingUp} label={t("compte_dataSaverMode")} onClick={() => {}} />
-          <Row icon={Settings} label={t("compte_settings")} onClick={() => {}} />
+          <Row
+            icon={TrendingUp}
+            label={`${t("compte_dataSaverMode")} — ${dataSaver ? t("common_on") : t("common_off")}`}
+            onClick={toggleDataSaver}
+          />
           <Row icon={LogOut} label={t("compte_logout")} onClick={handleLogout} destructive />
         </div>
       </div>

@@ -7,9 +7,12 @@ import { useMemo, useState, type ComponentType } from "react";
 import { motion } from "framer-motion";
 import { AppShell } from "@/components/app-shell";
 import { ProductCard } from "@/components/product-card";
-import { useInfiniteProducts, usePosts, useToggleLike, useLikes } from "@/lib/queries";
+import { useInfiniteProducts, usePosts, useToggleLike, useLikes, useComments } from "@/lib/queries";
+import { CommentSheet } from "@/components/comment-sheet";
+import { GuestPrompt } from "@/components/guest-prompt";
 import { hapticLight } from "@/lib/haptics";
 import { useAuth } from "@/lib/auth";
+import { shareContent } from "@/lib/share";
 import { useApp } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
 import { CATEGORIES } from "@/lib/categories";
@@ -192,10 +195,25 @@ function CategoryChip({ icon, label, active, onClick }: { icon: string; label: s
 
 function TextPost({ post }: { post: any }) {
   const { session } = useAuth();
+  const { t } = useApp();
   const { data: likesData = [] } = useLikes(undefined, post.id);
   const toggleLike = useToggleLike();
   const liked = !!session && likesData.some((l: any) => l.user_id === session.user.id);
   const author = post.profiles;
+  const [showComments, setShowComments] = useState(false);
+  const [showGuestPrompt, setShowGuestPrompt] = useState(false);
+  const { data: postComments = [] } = useComments(undefined, post.id);
+
+  function handleLike() {
+    if (!session) return setShowGuestPrompt(true);
+    hapticLight();
+    toggleLike.mutate({ postId: post.id, liked });
+  }
+
+  async function handleShare() {
+    const url = `${window.location.origin}/`;
+    await shareContent({ title: "DabbyMarket", text: post.text, url }, t);
+  }
 
   return (
     <article className="overflow-hidden rounded-2xl border border-border bg-card">
@@ -215,22 +233,22 @@ function TextPost({ post }: { post: any }) {
       )}
       <div className="flex items-center justify-between p-3 text-muted-foreground">
         <button
-          onClick={() => { hapticLight(); toggleLike.mutate({ postId: post.id, liked }); }}
+          onClick={handleLike}
           className={cn("flex items-center gap-1.5 text-xs font-medium", liked && "text-destructive")}
         >
           <Heart size={18} fill={liked ? "currentColor" : "none"} />
           <span>{likesData.length}</span>
         </button>
-        <button className="flex items-center gap-1.5 text-xs font-medium">
+        <button className="flex items-center gap-1.5 text-xs font-medium" onClick={() => setShowComments(true)}>
           <MessageCircle size={18} />
+          {postComments.length > 0 && <span>{postComments.length}</span>}
         </button>
-        <button className="flex items-center gap-1.5 text-xs font-medium">
+        <button onClick={handleShare} className="flex items-center gap-1.5 text-xs font-medium">
           <Share2 size={18} />
         </button>
-        <button className="flex items-center gap-1.5 text-xs font-medium">
-          <Bookmark size={18} />
-        </button>
       </div>
+      {showComments && <CommentSheet postId={post.id} onClose={() => setShowComments(false)} />}
+      <GuestPrompt open={showGuestPrompt} onClose={() => setShowGuestPrompt(false)} />
     </article>
   );
 }

@@ -10,6 +10,9 @@ import { useAuth } from "@/lib/auth";
 import { ConditionBadge, VerifiedBadge } from "@/components/product-card";
 import { ProductDetailSkeleton } from "@/components/skeletons";
 import { hapticLight, hapticSuccess } from "@/lib/haptics";
+import { CommentSection } from "@/components/comment-section";
+import { GuestPrompt } from "@/components/guest-prompt";
+import { shareContent } from "@/lib/share";
 import { BottomNav } from "@/components/bottom-nav";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { Pepite } from "@/components/pepite";
@@ -39,6 +42,7 @@ export default function ProduitPage() {
   useRecordView("product", id);
   const { data: viewsCount = 0 } = useViewsCount("product", id);
   const [imgIndex, setImgIndex] = useState(0);
+  const [showGuestPrompt, setShowGuestPrompt] = useState(false);
 
   if (isLoading) {
     return <ProductDetailSkeleton />;
@@ -59,6 +63,7 @@ export default function ProduitPage() {
   const shopReviews = reviews.slice(0, 2);
 
   async function handleBoost() {
+    if (!session) return setShowGuestPrompt(true);
     if (isBoosted) return toast.success(t("produit_alreadyBoosted"));
     try {
       await boostProduct.mutateAsync(product!.id);
@@ -69,11 +74,33 @@ export default function ProduitPage() {
     }
   }
 
+  function handleLike() {
+    if (!session) return setShowGuestPrompt(true);
+    hapticLight();
+    toggleLike.mutate({ productId: product.id, liked });
+    toast.success(liked ? t("produit_likeRemoved") : t("produit_likeAdded"));
+  }
+
+  function handleSave() {
+    if (!session) return setShowGuestPrompt(true);
+    hapticLight();
+    toggleWishlist.mutate({ productId: product.id, saved });
+    toast.success(saved ? t("produit_saveRemoved") : t("produit_saveAdded"));
+  }
+
   async function handleContact() {
-    if (!session) return toast.error(t("carte_loginToContact"));
+    if (!session) return setShowGuestPrompt(true);
     if (session.user.id === shop!.owner_id) return toast.error(t("produit_ownProductError"));
     const conv = await startConversation.mutateAsync({ sellerId: shop!.owner_id, shopId: shop!.id, productId: product!.id });
     navigate(`/messages/${conv.id}`);
+  }
+
+  async function handleShare() {
+    const url = `${window.location.origin}/produit/${product!.id}`;
+    await shareContent(
+      { title: product!.name, text: `${product!.name} — ${formatXAF(product!.price_xaf)} sur DabbyMarket`, url },
+      t,
+    );
   }
 
   return (
@@ -85,7 +112,7 @@ export default function ProduitPage() {
           <ArrowLeft size={18} />
         </Link>
         <button
-          onClick={() => toggleWishlist.mutate({ productId: product.id, saved })}
+          onClick={handleSave}
           aria-label={t("produit_saveIdle")}
           className={cn(
             "absolute right-3 top-3 z-10 grid h-10 w-10 place-items-center rounded-full backdrop-blur transition-all",
@@ -218,16 +245,14 @@ export default function ProduitPage() {
             ))}
           </section>
         )}
+
+        <CommentSection productId={product.id} />
       </div>
 
       <div className="fixed inset-x-0 bottom-16 z-30 mx-auto max-w-md border-t border-border bg-background/95 p-3 backdrop-blur lg:bottom-0 lg:max-w-2xl">
         <div className="grid grid-cols-3 gap-2">
           <button
-            onClick={() => {
-              hapticLight();
-              toggleLike.mutate({ productId: product.id, liked });
-              toast.success(liked ? t("produit_likeRemoved") : t("produit_likeAdded"));
-            }}
+            onClick={handleLike}
             className={cn(
               "flex flex-col items-center gap-0.5 rounded-xl border border-border py-2.5 text-[11px] font-semibold transition-all",
               liked ? "bg-destructive/10 border-destructive text-destructive" : "bg-card hover:bg-accent",
@@ -237,11 +262,7 @@ export default function ProduitPage() {
             {t("produit_likeIdle")}
           </button>
           <button
-            onClick={() => {
-              hapticLight();
-              toggleWishlist.mutate({ productId: product.id, saved });
-              toast.success(saved ? t("produit_saveRemoved") : t("produit_saveAdded"));
-            }}
+            onClick={handleSave}
             className={cn(
               "flex flex-col items-center gap-0.5 rounded-xl border border-border py-2.5 text-[11px] font-semibold transition-all",
               saved ? "bg-primary/10 border-primary text-primary" : "bg-card hover:bg-accent",
@@ -266,13 +287,14 @@ export default function ProduitPage() {
           <button onClick={handleContact} className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground">
             <MessageCircle size={16} /> {t("produit_contact")}
           </button>
-          <button className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-card py-2.5 text-sm font-semibold">
+          <button onClick={handleShare} className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-card py-2.5 text-sm font-semibold">
             <Share2 size={16} /> {t("produit_share")}
           </button>
         </div>
       </div>
 
       <div className="lg:hidden"><BottomNav /></div>
+      <GuestPrompt open={showGuestPrompt} onClose={() => setShowGuestPrompt(false)} />
       </div>
     </div>
   );

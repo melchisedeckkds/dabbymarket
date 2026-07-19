@@ -39,6 +39,8 @@ export const translations = {
     common_continue: "Continuer",
     common_since: "depuis",
     common_offline: "Vous êtes hors ligne — certaines actions peuvent échouer",
+    common_on: "activé",
+    common_off: "désactivé",
 
     // Auth
     auth_login: "Se connecter",
@@ -46,6 +48,7 @@ export const translations = {
     auth_name: "Nom",
     auth_namePlaceholder: "Ton nom",
     auth_phone: "Numéro de téléphone",
+    auth_country: "Pays",
     auth_password: "Mot de passe",
     auth_submitLogin: "Se connecter",
     auth_submitSignup: "Créer mon compte",
@@ -157,6 +160,7 @@ export const translations = {
     produit_viewOnMap: "Voir sur la carte",
     produit_contact: "Contacter",
     produit_share: "Partager",
+    produit_linkCopied: "Lien copié dans le presse-papiers",
     produit_boost: "Booster",
     produit_alreadyBoosted: "Ce produit est déjà boosté ✨",
     produit_boostSuccess: "Produit boosté ! -80 Pépites",
@@ -361,6 +365,17 @@ export const translations = {
     // Monnaie / vocabulaire
     pepites: "Pépites",
 
+    // Mode visiteur
+    guest_title: "Connexion requise",
+    guest_desc: "Créez un compte gratuit ou connectez-vous pour continuer — c'est rapide et vous recevez 500 Pépites offertes.",
+    guest_cta: "Se connecter / S'inscrire",
+
+    // Commentaires
+    comments_title: "Commentaires",
+    comments_empty: "Aucun commentaire pour l'instant. Soyez le premier à réagir !",
+    comments_placeholder: "Écrire un commentaire...",
+    comments_send: "Envoyer",
+
     // Visite guidée (première utilisation)
     onboarding_marcheTitle: "Bienvenue au Marché",
     onboarding_marcheDesc: "Parcourez les publications et produits des boutiques autour de vous, comme un vrai marché de quartier.",
@@ -427,6 +442,8 @@ export const translations = {
     common_continue: "Continue",
     common_since: "since",
     common_offline: "You are offline — some actions may fail",
+    common_on: "on",
+    common_off: "off",
 
     // Auth
     auth_login: "Log in",
@@ -434,6 +451,7 @@ export const translations = {
     auth_name: "Name",
     auth_namePlaceholder: "Your name",
     auth_phone: "Phone number",
+    auth_country: "Country",
     auth_password: "Password",
     auth_submitLogin: "Log in",
     auth_submitSignup: "Create my account",
@@ -545,6 +563,7 @@ export const translations = {
     produit_viewOnMap: "View on map",
     produit_contact: "Contact",
     produit_share: "Share",
+    produit_linkCopied: "Link copied to clipboard",
     produit_boost: "Boost",
     produit_alreadyBoosted: "This product is already boosted ✨",
     produit_boostSuccess: "Product boosted! -80 Pépites",
@@ -748,6 +767,17 @@ export const translations = {
 
     // Currency / vocabulary
     pepites: "Pépites",
+
+    // Guest mode
+    guest_title: "Sign in required",
+    guest_desc: "Create a free account or log in to continue — it's quick, and you get 500 Pépites for free.",
+    guest_cta: "Log in / Sign up",
+
+    // Comments
+    comments_title: "Comments",
+    comments_empty: "No comments yet. Be the first to react!",
+    comments_placeholder: "Write a comment...",
+    comments_send: "Send",
 
     // Onboarding tour (first use)
     onboarding_marcheTitle: "Welcome to the Marketplace",

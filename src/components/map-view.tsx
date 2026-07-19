@@ -1,6 +1,6 @@
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents, CircleMarker } from "react-leaflet";
 import L from "leaflet";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 export type GeoPoint = { lat: number; lng: number; accuracy?: number };
 
@@ -48,19 +48,47 @@ function userPin() {
   });
 }
 
-function FitToShops({ shops, user, focus }: { shops: ShopPin[]; user: GeoPoint | null; focus: [number, number] | null }) {
+function FitToShops({
+  shops,
+  user,
+  focus,
+  countryCenter,
+}: {
+  shops: ShopPin[];
+  user: GeoPoint | null;
+  focus: [number, number] | null;
+  countryCenter: [number, number] | null;
+}) {
   const map = useMap();
+  const didInitialCountryFly = useRef(false);
+
   useEffect(() => {
     if (focus) {
       map.flyTo(focus, 15, { duration: 0.9 });
       return;
     }
+    if (user) {
+      // Position réelle activée : on recentre sur l'utilisateur + boutiques
+      // proches (c'est ce qui permet de voir ce qui est près de chez soi).
+      const pts: [number, number][] = shops.map((s) => [s.lat, s.lng]);
+      pts.push([user.lat, user.lng]);
+      const b = L.latLngBounds(pts);
+      map.fitBounds(b.pad(0.35), { animate: true });
+      return;
+    }
+    if (!didInitialCountryFly.current && countryCenter) {
+      // Première ouverture de la carte, pas encore de position précise
+      // activée : on oriente directement vers le pays de l'utilisateur
+      // (déduit de son numéro de téléphone à l'inscription).
+      didInitialCountryFly.current = true;
+      map.flyTo(countryCenter, 6, { duration: 1 });
+      return;
+    }
     const pts: [number, number][] = shops.map((s) => [s.lat, s.lng]);
-    if (user) pts.push([user.lat, user.lng]);
     if (!pts.length) return;
     const b = L.latLngBounds(pts);
     map.fitBounds(b.pad(0.35), { animate: true });
-  }, [shops, user, focus, map]);
+  }, [shops, user, focus, map, countryCenter]);
   return null;
 }
 
@@ -78,6 +106,7 @@ export default function MapView({
   user,
   theme = "dark",
   focus = null,
+  countryCenter = null,
   onMapClick,
 }: {
   shops: ShopPin[];
@@ -86,6 +115,7 @@ export default function MapView({
   user: GeoPoint | null;
   theme?: "dark" | "light";
   focus?: [number, number] | null;
+  countryCenter?: [number, number] | null;
   onMapClick?: () => void;
 }) {
   const tileUrl = useMemo(
@@ -105,7 +135,7 @@ export default function MapView({
       className="absolute inset-0 h-full w-full"
     >
       <TileLayer url={tileUrl} attribution="&copy; OpenStreetMap &copy; CARTO" />
-      <FitToShops shops={shops} user={user} focus={focus} />
+      <FitToShops shops={shops} user={user} focus={focus} countryCenter={countryCenter} />
       <MapClickHandler onMapClick={onMapClick} />
 
       {user && (

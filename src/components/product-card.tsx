@@ -1,10 +1,13 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Heart, MessageCircle, Share2, Bookmark, BadgeCheck, Zap } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useLikes, useToggleLike, useWishlist, useToggleWishlist } from "@/lib/queries";
 import { hapticLight } from "@/lib/haptics";
+import { shareContent } from "@/lib/share";
 import { useApp } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
+import { GuestPrompt } from "./guest-prompt";
 
 function formatXAF(n: number) {
   return `${n.toLocaleString("fr-FR")} FCFA`;
@@ -22,6 +25,7 @@ type RealProduct = {
 
 export function ProductCard({ product }: { product: RealProduct }) {
   const { session } = useAuth();
+  const { t } = useApp();
   const shop = product.shops;
   const { data: likesData = [] } = useLikes(product.id);
   const { data: wishlistData = [] } = useWishlist();
@@ -32,6 +36,24 @@ export function ProductCard({ product }: { product: RealProduct }) {
   const saved = !!wishlistData.find((w: any) => w.product_id === product.id);
   const isBoosted = !!product.boosted_until && new Date(product.boosted_until).getTime() > Date.now();
   const photo = product.images?.[0];
+  const [showGuestPrompt, setShowGuestPrompt] = useState(false);
+
+  function handleLike() {
+    if (!session) return setShowGuestPrompt(true);
+    hapticLight();
+    toggleLike.mutate({ productId: product.id, liked });
+  }
+
+  function handleSave() {
+    if (!session) return setShowGuestPrompt(true);
+    hapticLight();
+    toggleWishlist.mutate({ productId: product.id, saved });
+  }
+
+  async function handleShare() {
+    const url = `${window.location.origin}/produit/${product.id}`;
+    await shareContent({ title: product.name, text: `${product.name} — ${formatXAF(product.price_xaf)} sur DabbyMarket`, url }, t);
+  }
 
   if (!shop) return null;
 
@@ -74,7 +96,7 @@ export function ProductCard({ product }: { product: RealProduct }) {
         <div className="mt-2.5 flex items-center justify-between text-muted-foreground">
           <button
             type="button"
-            onClick={() => { hapticLight(); toggleLike.mutate({ productId: product.id, liked }); }}
+            onClick={handleLike}
             className={cn("flex items-center gap-1.5 text-xs font-medium transition-colors", liked && "text-destructive")}
             aria-label="Coup de cœur"
           >
@@ -84,12 +106,12 @@ export function ProductCard({ product }: { product: RealProduct }) {
           <Link to={`/produit/${product.id}`} className="flex items-center gap-1.5 text-xs font-medium" aria-label="Commenter">
             <MessageCircle size={18} strokeWidth={2} />
           </Link>
-          <button type="button" className="flex items-center gap-1.5 text-xs font-medium" aria-label="Faire connaître">
+          <button type="button" onClick={handleShare} className="flex items-center gap-1.5 text-xs font-medium" aria-label={t("produit_share")}>
             <Share2 size={18} strokeWidth={2} />
           </button>
           <button
             type="button"
-            onClick={() => { hapticLight(); toggleWishlist.mutate({ productId: product.id, saved }); }}
+            onClick={handleSave}
             className={cn("flex items-center gap-1.5 text-xs font-medium transition-colors", saved && "text-primary")}
             aria-label="Panier d'envie"
           >
@@ -97,6 +119,7 @@ export function ProductCard({ product }: { product: RealProduct }) {
           </button>
         </div>
       </div>
+      <GuestPrompt open={showGuestPrompt} onClose={() => setShowGuestPrompt(false)} />
     </article>
   );
 }

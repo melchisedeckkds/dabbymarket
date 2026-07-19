@@ -5,7 +5,9 @@ import { cn } from "@/lib/utils";
 import { useShops, useProducts } from "@/lib/queries";
 import { supabase } from "@/lib/supabase";
 import { useApp } from "@/lib/app-store";
+import { useAuth } from "@/lib/auth";
 import { useEscapeToClose } from "@/hooks/use-escape-to-close";
+import { GuestPrompt } from "./guest-prompt";
 import type { Lang } from "@/lib/i18n";
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -62,9 +64,11 @@ ${languageInstruction}`;
 export function LaGueriteChat() {
   const location = useLocation();
   const { t, lang } = useApp();
+  const { session } = useAuth();
   const { data: shops = [] } = useShops();
   const { data: products = [] } = useProducts();
   const [open, setOpen] = useState(false);
+  const [showGuestPrompt, setShowGuestPrompt] = useState(false);
   useEscapeToClose(open, () => setOpen(false));
   const [msgs, setMsgs] = useState<Msg[]>([{ role: "assistant", content: t("laGuerite_intro") }]);
   const [input, setInput] = useState("");
@@ -85,6 +89,10 @@ export function LaGueriteChat() {
   async function send() {
     const text = input.trim();
     if (!text || loading) return;
+    if (!session) {
+      setShowGuestPrompt(true);
+      return;
+    }
     const next: Msg[] = [...msgs, { role: "user", content: text }];
     setMsgs(next);
     setInput("");
@@ -194,6 +202,7 @@ export function LaGueriteChat() {
           </div>
         </div>
       )}
+      <GuestPrompt open={showGuestPrompt} onClose={() => setShowGuestPrompt(false)} />
     </>
   );
 }
