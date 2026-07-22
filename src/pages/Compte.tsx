@@ -254,11 +254,23 @@ export default function ComptePage() {
           </div>
         )}
 
+        {/* ===== MENU DES RÉGLAGES ===== */}
         <div className="mt-6 space-y-2">
           <Row to="/suggestions" icon={MessageSquarePlus} label={t("compte_suggestFeature")} />
           <Row to="/cgu" icon={FileText} label={t("compte_terms")} />
-          <Row onClick={toggleTheme} icon={theme === "dark" ? Moon : Sun} label={theme === "dark" ? t("compte_nightMode") : t("compte_dayMode")} />
-          <Row icon={Languages} label={`${t("compte_language")} : ${lang === "fr" ? "Français" : "English"}`} onClick={() => setLang(lang === "fr" ? "en" : "fr")} />
+          
+          {/* Bouton de bascule Jour / Nuit CORRIGÉ */}
+          <Row 
+            onClick={toggleTheme} 
+            icon={theme === "dark" ? Sun : Moon} 
+            label={theme === "dark" ? "🌙 Mode Nuit" : "☀️ Mode Jour"} 
+          />
+          
+          <Row 
+            icon={Languages} 
+            label={`${t("compte_language")} : ${lang === "fr" ? "Français" : "English"}`} 
+            onClick={() => setLang(lang === "fr" ? "en" : "fr")} 
+          />
           <Row
             icon={TrendingUp}
             label={`${t("compte_dataSaverMode")} — ${dataSaver ? t("common_on") : t("common_off")}`}
@@ -270,6 +282,8 @@ export default function ComptePage() {
     </AppShell>
   );
 }
+
+// ===== COMPOSANTS INTERNES =====
 
 function UserDashboard({
   totalShops,

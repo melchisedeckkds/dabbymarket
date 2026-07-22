@@ -140,7 +140,7 @@ export default function AuthPage() {
                     onChange={(e) => setPhone(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && submit()}
                     inputMode="tel"
-                    placeholder="6 96 43 07 23"
+                    placeholder="6 97 97 97 97"
                     className="w-full min-w-0 border-l border-gray-200 bg-transparent py-3 pl-2 text-sm text-amber-900 outline-none placeholder:text-amber-300/70"
                   />
                 </div>
