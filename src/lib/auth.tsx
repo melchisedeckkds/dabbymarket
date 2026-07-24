@@ -86,22 +86,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [session?.user?.id]);
 
   async function signUp(phone: string, password: string, name: string) {
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email: phoneToInternalEmail(phone),
       password,
       options: { data: { name, phone } },
     });
     if (error) return { error: error.message };
+    if (data.session){
+      setSession(data.session);
+      if(data.session.user?.id) await loadProfile(data.session.user.id);
+    }
     // Le profil est créé automatiquement par le trigger SQL handle_new_user()
     return { error: null };
   }
 
   async function signIn(phone: string, password: string) {
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: phoneToInternalEmail(phone),
       password,
     });
     if (error) return { error: error.message };
+    if (data.session){
+      setSession(data.session);
+      if(data.session.user?.id) await loadProfile(data.session.user.id);
+    }
     return { error: null };
   }
 
