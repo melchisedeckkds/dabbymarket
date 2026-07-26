@@ -12,6 +12,7 @@ export const translations = {
     nav_admin: "Console admin",
     nav_recharger: "Recharger",
     nav_logout: "Se déconnecter",
+    nav_login: "Se connecter",
 
     // Commun
     common_loading: "Chargement…",
@@ -415,6 +416,7 @@ export const translations = {
     nav_admin: "Admin console",
     nav_recharger: "Top up",
     nav_logout: "Log out",
+    nav_login: "Log in",
 
     // Common
     common_loading: "Loading…",

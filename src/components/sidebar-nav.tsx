@@ -1,10 +1,12 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, Navigate, useLocation } from "react-router-dom";
 import { Store, Map as MapIcon, PlusCircle, MessageCircle, User, ShieldCheck, LogOut } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useApp } from "@/lib/app-store";
 import { Pepite } from "./pepite";
 import { Logo } from "./logo";
 import { cn } from "@/lib/utils";
+import { useNavigate } from "react-router-dom";
+import {LogIn} from "lucide-react";
 import type { TranslationKey } from "@/lib/i18n";
 
 const NAV: { to: string; key: TranslationKey; icon: typeof Store }[] = [
@@ -18,6 +20,8 @@ const NAV: { to: string; key: TranslationKey; icon: typeof Store }[] = [
 export function SidebarNav() {
   const path = useLocation().pathname;
   const { profile, signOut } = useAuth();
+  const { session } = useAuth();
+  const navigate = useNavigate();
   const { unreadCount, t } = useApp();
 
   return (
@@ -86,9 +90,21 @@ export function SidebarNav() {
             <p className="truncate text-[11px] text-muted-foreground">{profile?.phone}</p>
           </div>
         </Link>
-        <button onClick={() => signOut()} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-destructive hover:bg-destructive/10">
+        {session ? (
+          <button 
+            onClick={async () =>{
+              await signOut();
+              navigate("/auth");
+            }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-destructive hover:bg-destructive/10">
           <LogOut size={18} /> {t("nav_logout")}
         </button>
+        ) : (
+          <Link
+             to="auth"
+             className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-primary hover:bg-primary/10">
+              <LogIn size={18} /> {t("nav_login")}
+             </Link>
+        )}
       </div>
     </aside>
   );
