@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState, type ComponentType } from "react";
 import { motion } from "framer-motion";
+import { ImageLightbox } from "@/components/image-lightbox";
 import { AppShell } from "@/components/app-shell";
 import { ProductCard } from "@/components/product-card";
 import { useInfiniteProducts, usePosts, useToggleLike, useLikes, useComments } from "@/lib/queries";
