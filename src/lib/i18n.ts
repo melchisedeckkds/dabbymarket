@@ -373,6 +373,9 @@ export const translations = {
 
     // Commentaires
     comments_title: "Commentaires",
+    marche_likesLabel: "j'aime",
+    marche_viewComments: "Voir les commentaires",
+    marche_viewImage: "Voir l'image en entier",
     comments_empty: "Aucun commentaire pour l'instant. Soyez le premier à réagir !",
     comments_placeholder: "Écrire un commentaire...",
     comments_send: "Envoyer",
@@ -777,6 +780,9 @@ export const translations = {
 
     // Comments
     comments_title: "Comments",
+    marche_likesLabel: "likes",
+    marche_viewComments: "View comments",
+    marche_viewImage: "View full image",
     comments_empty: "No comments yet. Be the first to react!",
     comments_placeholder: "Write a comment...",
     comments_send: "Send",
