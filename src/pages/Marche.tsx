@@ -202,12 +202,24 @@ function TextPost({ post }: { post: any }) {
   const author = post.profiles;
   const [showComments, setShowComments] = useState(false);
   const [showGuestPrompt, setShowGuestPrompt] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [burst, setBurst] = useState(false);
   const { data: postComments = [] } = useComments(undefined, post.id);
 
   function handleLike() {
     if (!session) return setShowGuestPrompt(true);
     hapticLight();
     toggleLike.mutate({ postId: post.id, liked });
+  }
+
+  function handleDoubleTapImage() {
+    if (!session) return setShowGuestPrompt(true);
+    if (!liked) {
+      hapticLight();
+      toggleLike.mutate({ postId: post.id, liked });
+    }
+    setBurst(true);
+    setTimeout(() => setBurst(false), 700);
   }
 
   async function handleShare() {
@@ -217,6 +229,7 @@ function TextPost({ post }: { post: any }) {
 
   return (
     <article className="overflow-hidden rounded-2xl border border-border bg-card">
+      {/* En-tête */}
       <div className="flex items-center gap-2 px-3 py-2.5">
         <div className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full bg-accent text-base">
           {author?.avatar_url ? <img src={author.avatar_url} alt="" className="h-full w-full object-cover" /> : "👤"}
@@ -225,30 +238,60 @@ function TextPost({ post }: { post: any }) {
           <span className="truncate text-sm font-semibold">{author?.name ?? "DabbyMarket"}</span>
         </div>
       </div>
-      <p className="px-4 pb-3 text-sm leading-relaxed">{post.text}</p>
+
+      {/* Image — proportions naturelles conservées, jamais recadrée de force */}
       {post.image_url && (
-        <div className="relative aspect-[16/10] w-full bg-accent">
-          <img src={post.image_url} alt="" className="h-full w-full object-cover" />
+        <div className="relative w-full bg-accent" onDoubleClick={handleDoubleTapImage}>
+          <button type="button" onClick={() => setLightboxOpen(true)} className="block w-full" aria-label={t("marche_viewImage")}>
+            <img src={post.image_url} alt="" className="h-auto max-h-[36rem] w-full object-cover" />
+          </button>
+          {burst && (
+            <motion.div
+              initial={{ scale: 0.4, opacity: 0 }}
+              animate={{ scale: 1.15, opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.35 }}
+              className="pointer-events-none absolute inset-0 grid place-items-center"
+            >
+              <Heart size={88} className="fill-white text-white drop-shadow-lg" />
+            </motion.div>
+          )}
         </div>
       )}
-      <div className="flex items-center justify-between p-3 text-muted-foreground">
-        <button
-          onClick={handleLike}
-          className={cn("flex items-center gap-1.5 text-xs font-medium", liked && "text-destructive")}
-        >
-          <Heart size={18} fill={liked ? "currentColor" : "none"} />
-          <span>{likesData.length}</span>
+
+      {/* Barre d'actions */}
+      <div className="flex items-center gap-4 px-3 pt-2.5 text-foreground">
+        <button onClick={handleLike} aria-label={t("produit_likeIdle")}>
+          <Heart size={24} fill={liked ? "currentColor" : "none"} className={cn(liked && "text-destructive", liked && "animate-pop")} />
         </button>
-        <button className="flex items-center gap-1.5 text-xs font-medium" onClick={() => setShowComments(true)}>
-          <MessageCircle size={18} />
-          {postComments.length > 0 && <span>{postComments.length}</span>}
+        <button onClick={() => setShowComments(true)} aria-label={t("comments_title")}>
+          <MessageCircle size={24} />
         </button>
-        <button onClick={handleShare} className="flex items-center gap-1.5 text-xs font-medium">
-          <Share2 size={18} />
+        <button onClick={handleShare} aria-label={t("produit_share")}>
+          <Share2 size={24} />
         </button>
       </div>
+
+      {/* Compteur de coups de cœur */}
+      {likesData.length > 0 && (
+        <p className="px-3 pt-1.5 text-sm font-semibold">
+          {likesData.length} {t("marche_likesLabel")}
+        </p>
+      )}
+
+      {/* Légende */}
+      <p className="px-3 pb-1 pt-1.5 text-sm leading-relaxed">
+        <span className="font-semibold">{author?.name ?? "DabbyMarket"}</span> {post.text}
+      </p>
+
+      {/* Lien vers les commentaires */}
+      <button onClick={() => setShowComments(true)} className="px-3 pb-3 text-left text-xs text-muted-foreground">
+        {postComments.length > 0 ? `${t("marche_viewComments")} (${postComments.length})` : t("comments_empty")}
+      </button>
+
+      {lightboxOpen && post.image_url && <ImageLightbox src={post.image_url} onClose={() => setLightboxOpen(false)} />}
       {showComments && <CommentSheet postId={post.id} onClose={() => setShowComments(false)} />}
       <GuestPrompt open={showGuestPrompt} onClose={() => setShowGuestPrompt(false)} />
     </article>
   );
-}
+      }
