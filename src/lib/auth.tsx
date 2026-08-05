@@ -24,6 +24,7 @@ export type Profile = {
   avatar_url: string | null;
   pepites_balance: number;
   is_admin: boolean;
+  is_blocked: boolean;
   created_at: string;
 };
 
@@ -106,9 +107,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password,
     });
     if (error) return { error: error.message };
-    if (data.session){
+    if (data.session?.user?.id) {
+      const { data: p } = await supabase.from("profiles").select("*").eq("id", data.session.user.id).single();
+      if (p?.is_blocked) {
+        await supabase.auth.signOut();
+        return { error: "Ce compte a été suspendu. Contacte l'assistance DabbyMarket pour plus d'informations." };
+      }
       setSession(data.session);
-      if(data.session.user?.id) await loadProfile(data.session.user.id);
+      setProfile(p as Profile);
     }
     return { error: null };
   }
