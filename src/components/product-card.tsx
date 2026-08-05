@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Heart, MessageCircle, Share2, Bookmark, BadgeCheck, Zap } from "lucide-react";
+import { Heart, MessageCircle, Share2, Bookmark, BadgeCheck, Zap, Star } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useLikes, useToggleLike, useWishlist, useToggleWishlist } from "@/lib/queries";
 import { hapticLight } from "@/lib/haptics";
@@ -23,7 +23,7 @@ type RealProduct = {
   shops: { id: string; name: string; logo_url: string | null; verified: boolean } | null;
 };
 
-export function ProductCard({ product }: { product: RealProduct }) {
+export function ProductCard({ product, rating }: { product: RealProduct; rating?: { avg: number; count: number } }) {
   const { session } = useAuth();
   const { t } = useApp();
   const shop = product.shops;
@@ -68,6 +68,11 @@ export function ProductCard({ product }: { product: RealProduct }) {
             <span className="truncate text-sm font-semibold">{shop.name}</span>
             {shop.verified && <BadgeCheck size={14} className="shrink-0 fill-[color:var(--verified)] text-background" />}
           </div>
+          {rating && (
+            <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+              <Star size={10} className="fill-primary text-primary" /> {rating.avg} ({rating.count})
+            </span>
+          )}
         </div>
         <ConditionBadge condition={product.condition} />
       </Link>
