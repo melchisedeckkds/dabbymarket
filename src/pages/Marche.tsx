@@ -3,12 +3,12 @@ import {
   Search, Sparkles, Map as MapIcon, MessageCircle, Share2, Heart, Bookmark,
   Shirt, Smartphone, Utensils, Sofa, Wrench, LayoutGrid, Package, Loader2,
 } from "lucide-react";
-import { useMemo, useState, type ComponentType } from "react";
+import { useMemo, useState, useEffect, useRef, type ComponentType } from "react";
 import { motion } from "framer-motion";
 import { ImageLightbox } from "@/components/image-lightbox";
 import { AppShell } from "@/components/app-shell";
 import { ProductCard } from "@/components/product-card";
-import { useInfiniteProducts, usePosts, useToggleLike, useLikes, useComments } from "@/lib/queries";
+import { useInfiniteProducts, useInfinitePosts, useToggleLike, useLikes, useComments, useShopRatingsMap } from "@/lib/queries";
 import { CommentSheet } from "@/components/comment-sheet";
 import { GuestPrompt } from "@/components/guest-prompt";
 import { hapticLight } from "@/lib/haptics";
@@ -33,12 +33,41 @@ export default function MarchePage() {
   const {
     data: productsPages,
     isLoading: loadingProducts,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
+    fetchNextPage: fetchNextProducts,
+    hasNextPage: hasNextProducts,
+    isFetchingNextPage: fetchingNextProducts,
   } = useInfiniteProducts();
   const products = useMemo(() => productsPages?.pages.flat() ?? [], [productsPages]);
-  const { data: posts = [], isLoading: loadingPosts } = usePosts();
+  const {
+    data: postsPages,
+    isLoading: loadingPosts,
+    fetchNextPage: fetchNextPosts,
+    hasNextPage: hasNextPosts,
+    isFetchingNextPage: fetchingNextPosts,
+  } = useInfinitePosts();
+  const posts = useMemo(() => postsPages?.pages.flat() ?? [], [postsPages]);
+  const shopRatings = useShopRatingsMap(products.map((p: any) => p.shops?.id).filter(Boolean));
+
+  const hasNextPage = hasNextProducts || hasNextPosts;
+  const isFetchingNextPage = fetchingNextProducts || fetchingNextPosts;
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Scroll infini : dès que la sentinelle en bas de liste devient visible,
+  // on charge la page suivante de produits ET de publications.
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0].isIntersecting) return;
+        if (hasNextProducts && !fetchingNextProducts) fetchNextProducts();
+        if (hasNextPosts && !fetchingNextPosts) fetchNextPosts();
+      },
+      { rootMargin: "600px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasNextProducts, hasNextPosts, fetchingNextProducts, fetchingNextPosts, fetchNextProducts, fetchNextPosts]);
 
   const filteredProducts = useMemo(() => {
     return products.filter((p: any) => {
@@ -150,7 +179,7 @@ export default function MarchePage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2">
             {filteredProducts.map((p: any, i: number) => (
               <motion.div key={p.id} custom={i} initial="hidden" animate="show" variants={fadeUp}>
-                <ProductCard product={p} />
+                <ProductCard product={p} rating={p.shops ? shopRatings.data?.get(p.shops.id) : undefined} />
               </motion.div>
             ))}
             {filteredPosts.map((p: any, i: number) => (
@@ -162,15 +191,8 @@ export default function MarchePage() {
         )}
 
         {!loading && hasNextPage && (
-          <div className="mt-4 flex justify-center pb-2">
-            <button
-              onClick={() => fetchNextPage()}
-              disabled={isFetchingNextPage}
-              className="flex items-center gap-2 rounded-xl border border-border bg-card px-5 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-accent disabled:opacity-60"
-            >
-              {isFetchingNextPage && <Loader2 size={14} className="animate-spin" />}
-              {t("marche_loadMore")}
-            </button>
+          <div ref={sentinelRef} className="flex justify-center py-4">
+            {isFetchingNextPage && <Loader2 size={18} className="animate-spin text-primary" />}
           </div>
         )}
       </div>
@@ -232,12 +254,12 @@ function TextPost({ post }: { post: any }) {
     <article className="overflow-hidden rounded-2xl border border-border bg-card">
       {/* En-tête */}
       <div className="flex items-center gap-2 px-3 py-2.5">
-        <div className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full bg-accent text-base">
+        <Link to={`/profil/${author?.id}`} className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full bg-accent text-base">
           {author?.avatar_url ? <img src={author.avatar_url} alt="" className="h-full w-full object-cover" /> : "👤"}
-        </div>
-        <div className="min-w-0 flex-1">
+        </Link>
+        <Link to={`/profil/${author?.id}`} className="min-w-0 flex-1">
           <span className="truncate text-sm font-semibold">{author?.name ?? "DabbyMarket"}</span>
-        </div>
+        </Link>
       </div>
 
       {/* Image — proportions naturelles conservées, jamais recadrée de force */}

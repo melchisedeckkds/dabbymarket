@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { AppShell } from "@/components/app-shell";
 import { AdminMetricsSkeleton } from "@/components/skeletons";
@@ -6,10 +7,49 @@ import { supabase } from "@/lib/supabase";
 import { useQuery } from "@tanstack/react-query";
 import { MiniBarChart } from "@/components/mini-chart";
 import { downloadCSV } from "@/lib/csv";
-import { usePendingRecharges, useConfirmRecharge, useSuggestions, usePepites7d, useViews7d } from "@/lib/queries";
+import {
+  usePendingRecharges,
+  useConfirmRecharge,
+  useSuggestions,
+  usePepites7d,
+  useViews7d,
+  useReports,
+  useResolveReport,
+  useAdminShops,
+  useSetShopBlocked,
+  useSetShopVerified,
+  useAdminUsers,
+  useSuspendAccount,
+  useAdminDeleteAccount,
+  useAdjustPepites,
+} from "@/lib/queries";
 import { useApp } from "@/lib/app-store";
-import { ArrowLeft, Download, Store, Package, Zap, TrendingUp, Users, ShieldCheck, Clock, CheckCircle2, XCircle, ThumbsUp, Loader2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Download,
+  Store,
+  Package,
+  Zap,
+  TrendingUp,
+  Users,
+  ShieldCheck,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  ThumbsUp,
+  Loader2,
+  Flag,
+  Lock,
+  Unlock,
+  BadgeCheck,
+  Trash2,
+  UserX,
+  UserCheck,
+  Coins,
+  Search,
+} from "lucide-react";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
 function formatXAF(n: number) {
   return `${n.toLocaleString("fr-FR")} FCFA`;
@@ -62,16 +102,20 @@ function useAdminMetrics() {
   });
 }
 
+type AdminTab = "overview" | "moderation" | "shops" | "accounts";
+
 export default function AdminPage() {
   const { profile } = useAuth();
   const { t, lang } = useApp();
   const locale = lang === "en" ? "en-US" : "fr-FR";
+  const [tab, setTab] = useState<AdminTab>("overview");
   const { data: metrics, isLoading } = useAdminMetrics();
   const { data: pendingRecharges = [] } = usePendingRecharges();
   const confirmRecharge = useConfirmRecharge();
   const { data: suggestions = [] } = useSuggestions();
   const { data: pepites7d } = usePepites7d();
   const { data: views7d } = useViews7d();
+  const { data: reports = [] } = useReports();
 
   if (profile && !profile.is_admin) return <Navigate to="/compte" replace />;
 
@@ -125,6 +169,18 @@ export default function AdminPage() {
         </span>
       </div>
 
+      <div className="flex gap-1.5 overflow-x-auto px-4 pt-3 pb-1 no-scrollbar">
+        <TabButton active={tab === "overview"} onClick={() => setTab("overview")} icon={TrendingUp} label={t("admin_tabOverview")} />
+        <TabButton active={tab === "moderation"} onClick={() => setTab("moderation")} icon={Flag} label={t("admin_tabModeration")} badge={reports.length} />
+        <TabButton active={tab === "shops"} onClick={() => setTab("shops")} icon={Store} label={t("admin_tabShops")} />
+        <TabButton active={tab === "accounts"} onClick={() => setTab("accounts")} icon={Users} label={t("admin_tabAccounts")} />
+      </div>
+
+      {tab === "moderation" && <ModerationTab reports={reports} />}
+      {tab === "shops" && <ShopsTab />}
+      {tab === "accounts" && <AccountsTab />}
+
+      {tab === "overview" && (
       <div className="space-y-4 p-4">
         <div className="grid grid-cols-2 gap-2">
           <Metric icon={Store} label={t("admin_activeShops")} value={metrics.shopsCount.toLocaleString(locale)} />
@@ -222,7 +278,332 @@ export default function AdminPage() {
           </div>
         </section>
       </div>
+      )}
     </AppShell>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  icon: Icon,
+  label,
+  badge,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ComponentType<{ size?: number }>;
+  label: string;
+  badge?: number;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`relative flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold transition-colors ${
+        active ? "gold-gradient" : "border border-border bg-card text-muted-foreground"
+      }`}
+    >
+      <Icon size={14} />
+      {label}
+      {!!badge && badge > 0 && (
+        <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-destructive px-1 text-[9px] font-bold text-white">
+          {badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function ConfirmDialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  destructive,
+  onConfirm,
+  confirmLabel,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  title: string;
+  description: string;
+  destructive?: boolean;
+  confirmLabel: string;
+  onConfirm: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-xs rounded-2xl">
+        <DialogHeader>
+          <DialogTitle className="text-base">{title}</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">{description}</p>
+        <DialogFooter className="flex-row justify-end gap-2">
+          <button onClick={() => onOpenChange(false)} className="rounded-full border border-border px-4 py-2 text-xs font-bold">
+            Annuler
+          </button>
+          <button
+            onClick={() => {
+              onConfirm();
+              onOpenChange(false);
+            }}
+            className={`rounded-full px-4 py-2 text-xs font-bold text-white ${destructive ? "bg-destructive" : "gold-gradient !text-background"}`}
+          >
+            {confirmLabel}
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// =========================================================
+// ONGLET MODÉRATION — file de signalements
+// =========================================================
+function ModerationTab({ reports }: { reports: any[] }) {
+  const { t } = useApp();
+  const resolveReport = useResolveReport();
+
+  async function handle(id: string, status: "resolved" | "dismissed") {
+    try {
+      await resolveReport.mutateAsync({ reportId: id, status });
+      toast.success(t("admin_contentDeleted"));
+    } catch (err: any) {
+      toast.error(t("admin_actionFailed"), { description: err.message });
+    }
+  }
+
+  return (
+    <div className="space-y-2 p-4">
+      <h2 className="text-sm font-semibold">{t("admin_reports")} ({reports.length})</h2>
+      {reports.length === 0 && <p className="text-xs text-muted-foreground">{t("admin_noReports")}</p>}
+      {reports.map((r: any) => (
+        <div key={r.id} className="space-y-1.5 rounded-xl border border-border bg-card p-3">
+          <div className="flex items-center gap-2">
+            <Flag size={14} className="text-destructive" />
+            <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+              {t("admin_reportTarget")}: {r.target_type}
+            </span>
+          </div>
+          <p className="text-sm">{r.reason}</p>
+          <p className="text-[10px] text-muted-foreground">
+            {t("admin_reportedBy")}: {r.profiles?.name} · {new Date(r.created_at).toLocaleDateString()}
+          </p>
+          <div className="flex justify-end gap-2 pt-1">
+            <button onClick={() => handle(r.id, "dismissed")} className="rounded-full border border-border px-3 py-1.5 text-[11px] font-bold">
+              {t("admin_dismiss")}
+            </button>
+            <button onClick={() => handle(r.id, "resolved")} className="rounded-full bg-[color:var(--verified)] px-3 py-1.5 text-[11px] font-bold text-background">
+              {t("admin_resolve")}
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// =========================================================
+// ONGLET BOUTIQUES — blocage / certification
+// =========================================================
+function ShopsTab() {
+  const { t } = useApp();
+  const { data: shops = [], isLoading } = useAdminShops();
+  const setBlocked = useSetShopBlocked();
+  const setVerified = useSetShopVerified();
+  const [confirm, setConfirm] = useState<{ shopId: string; blocked: boolean } | null>(null);
+
+  async function toggleVerified(shopId: string, verified: boolean) {
+    try {
+      await setVerified.mutateAsync({ shopId, verified: !verified });
+    } catch (err: any) {
+      toast.error(t("admin_actionFailed"), { description: err.message });
+    }
+  }
+
+  async function applyBlock() {
+    if (!confirm) return;
+    try {
+      await setBlocked.mutateAsync({ shopId: confirm.shopId, blocked: !confirm.blocked });
+      toast.success(confirm.blocked ? t("admin_shopUnblocked") : t("admin_shopBlocked"));
+    } catch (err: any) {
+      toast.error(t("admin_actionFailed"), { description: err.message });
+    }
+  }
+
+  if (isLoading) return <div className="p-4"><Loader2 className="animate-spin" size={18} /></div>;
+
+  return (
+    <div className="space-y-2 p-4">
+      <h2 className="text-sm font-semibold">{t("admin_tabShops")} ({shops.length})</h2>
+      {shops.map((s: any) => (
+        <div key={s.id} className="flex items-center gap-2.5 rounded-xl border border-border bg-card p-2.5">
+          <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-accent text-sm">
+            {s.logo_url ? <img src={s.logo_url} alt="" className="h-full w-full object-cover" /> : "🏪"}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold">{s.name}</p>
+            <p className="truncate text-[10px] text-muted-foreground">{s.profiles?.name} · {s.profiles?.phone}</p>
+            <div className="mt-0.5 flex gap-1">
+              {s.is_blocked && <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[9px] font-bold text-destructive">{t("admin_blocked")}</span>}
+              {s.verified && <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[9px] font-bold text-primary">{t("admin_verified")}</span>}
+            </div>
+          </div>
+          <button onClick={() => toggleVerified(s.id, s.verified)} className="grid h-8 w-8 place-items-center rounded-full border border-border">
+            <BadgeCheck size={14} className={s.verified ? "text-primary" : "text-muted-foreground"} />
+          </button>
+          <button
+            onClick={() => setConfirm({ shopId: s.id, blocked: s.is_blocked })}
+            className={`grid h-8 w-8 place-items-center rounded-full border ${s.is_blocked ? "border-[color:var(--verified)]" : "border-destructive"}`}
+          >
+            {s.is_blocked ? <Unlock size={14} className="text-[color:var(--verified)]" /> : <Lock size={14} className="text-destructive" />}
+          </button>
+        </div>
+      ))}
+      <ConfirmDialog
+        open={!!confirm}
+        onOpenChange={(v) => !v && setConfirm(null)}
+        title={confirm?.blocked ? t("admin_unblockShop") : t("admin_blockShop")}
+        description={t("admin_blockShopConfirm")}
+        destructive={!confirm?.blocked}
+        confirmLabel={confirm?.blocked ? t("admin_unblockShop") : t("admin_blockShop")}
+        onConfirm={applyBlock}
+      />
+    </div>
+  );
+}
+
+// =========================================================
+// ONGLET COMPTES — recherche, suspension, suppression, Pépites
+// =========================================================
+function AccountsTab() {
+  const { t } = useApp();
+  const { data: users = [], isLoading } = useAdminUsers();
+  const suspend = useSuspendAccount();
+  const deleteAccount = useAdminDeleteAccount();
+  const adjustPepites = useAdjustPepites();
+  const [query, setQuery] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [adjustTarget, setAdjustTarget] = useState<string | null>(null);
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
+
+  const filtered = users.filter(
+    (u: any) => u.name?.toLowerCase().includes(query.toLowerCase()) || u.phone?.includes(query),
+  );
+
+  async function toggleSuspend(userId: string, suspended: boolean) {
+    try {
+      await suspend.mutateAsync({ userId, suspended: !suspended });
+      toast.success(suspended ? t("admin_accountReactivated") : t("admin_accountSuspended"));
+    } catch (err: any) {
+      toast.error(t("admin_actionFailed"), { description: err.message });
+    }
+  }
+
+  async function confirmDeleteAccount() {
+    if (!confirmDelete) return;
+    try {
+      await deleteAccount.mutateAsync(confirmDelete);
+      toast.success(t("admin_accountDeleted"));
+    } catch (err: any) {
+      toast.error(t("admin_actionFailed"), { description: err.message });
+    } finally {
+      setConfirmDelete(null);
+    }
+  }
+
+  async function applyAdjust() {
+    if (!adjustTarget || !amount) return;
+    try {
+      await adjustPepites.mutateAsync({ userId: adjustTarget, amount: Number(amount), note });
+      toast.success(t("admin_adjustPepitesDone"));
+      setAdjustTarget(null);
+      setAmount("");
+      setNote("");
+    } catch (err: any) {
+      toast.error(t("admin_actionFailed"), { description: err.message });
+    }
+  }
+
+  if (isLoading) return <div className="p-4"><Loader2 className="animate-spin" size={18} /></div>;
+
+  return (
+    <div className="space-y-2 p-4">
+      <div className="relative">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t("admin_searchAccount")}
+          className="w-full rounded-full border border-border bg-card py-2 pl-8 pr-3 text-xs"
+        />
+      </div>
+      {filtered.map((u: any) => (
+        <div key={u.id} className="flex items-center gap-2.5 rounded-xl border border-border bg-card p-2.5">
+          <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full bg-accent text-sm">
+            {u.avatar_url ? <img src={u.avatar_url} alt="" className="h-full w-full object-cover" /> : "👤"}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold">{u.name} {u.is_admin && <ShieldCheck size={11} className="inline text-primary" />}</p>
+            <p className="truncate text-[10px] text-muted-foreground">{u.phone} · {u.pepites_balance} {t("pepites")}</p>
+            {u.is_blocked && <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-[9px] font-bold text-destructive">{t("admin_suspended")}</span>}
+          </div>
+          {!u.is_admin && (
+            <>
+              <button onClick={() => setAdjustTarget(u.id)} className="grid h-8 w-8 place-items-center rounded-full border border-border">
+                <Coins size={14} className="text-primary" />
+              </button>
+              <button onClick={() => toggleSuspend(u.id, u.is_blocked)} className="grid h-8 w-8 place-items-center rounded-full border border-border">
+                {u.is_blocked ? <UserCheck size={14} className="text-[color:var(--verified)]" /> : <UserX size={14} className="text-amber-500" />}
+              </button>
+              <button onClick={() => setConfirmDelete(u.id)} className="grid h-8 w-8 place-items-center rounded-full border border-destructive">
+                <Trash2 size={14} className="text-destructive" />
+              </button>
+            </>
+          )}
+        </div>
+      ))}
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        onOpenChange={(v) => !v && setConfirmDelete(null)}
+        title={t("admin_deleteAccount")}
+        description={t("admin_deleteAccountConfirm")}
+        destructive
+        confirmLabel={t("common_delete")}
+        onConfirm={confirmDeleteAccount}
+      />
+
+      <Dialog open={!!adjustTarget} onOpenChange={(v) => !v && setAdjustTarget(null)}>
+        <DialogContent className="max-w-xs rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-base">{t("admin_adjustPepites")}</DialogTitle>
+          </DialogHeader>
+          <input
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            type="number"
+            placeholder={t("admin_adjustPepitesAmount")}
+            className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm"
+          />
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder={t("admin_adjustPepitesNote")}
+            className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm"
+          />
+          <DialogFooter className="flex-row justify-end gap-2">
+            <button onClick={() => setAdjustTarget(null)} className="rounded-full border border-border px-4 py-2 text-xs font-bold">
+              Annuler
+            </button>
+            <button onClick={applyAdjust} className="rounded-full gold-gradient px-4 py-2 text-xs font-bold">
+              {t("admin_adjustPepitesApply")}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
 

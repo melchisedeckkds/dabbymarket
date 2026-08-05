@@ -1,9 +1,10 @@
 import { Link, useParams, useNavigate } from "react-router-dom";
-import { Star, MapPin, ArrowLeft, MessageCircle, Store, Loader2, Eye } from "lucide-react";
+import { Star, MapPin, ArrowLeft, MessageCircle, Store, Loader2, Eye, Phone, Flag } from "lucide-react";
 import { useState } from "react";
 import { VerifiedBadge, ConditionBadge } from "@/components/product-card";
 import { ShopHeaderSkeleton } from "@/components/skeletons";
 import { GuestPrompt } from "@/components/guest-prompt";
+import { ReportDialog } from "@/components/report-dialog";
 import { BottomNav } from "@/components/bottom-nav";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { useAuth } from "@/lib/auth";
@@ -61,6 +62,7 @@ export default function BoutiquePage() {
   const { data: viewsCount = 0 } = useViewsCount("shop", id);
   const [tab, setTab] = useState<"produits" | "avis" | "apropos" | "loc">("produits");
   const [showGuestPrompt, setShowGuestPrompt] = useState(false);
+  const [showReport, setShowReport] = useState(false);
 
   if (isLoading) {
     return <ShopHeaderSkeleton />;
@@ -97,6 +99,15 @@ export default function BoutiquePage() {
         <Link to="/" className="absolute left-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-background/70 backdrop-blur" aria-label={t("common_back")}>
           <ArrowLeft size={18} />
         </Link>
+        {session && session.user.id !== shop.owner_id && (
+          <button
+            onClick={() => setShowReport(true)}
+            aria-label={t("boutique_report")}
+            className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-background/70 backdrop-blur"
+          >
+            <Flag size={16} />
+          </button>
+        )}
       </div>
 
       <div className="-mt-10 px-4">
@@ -191,7 +202,20 @@ export default function BoutiquePage() {
         )}
 
         {tab === "apropos" && (
-          <dl className="mt-4 space-y-2 text-sm">
+          <div className="mt-4 space-y-3">
+            {shop.profiles && (
+              <Link to={`/profil/${shop.profiles.id}`} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+                <div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-full bg-accent text-lg">
+                  {shop.profiles.avatar_url ? <img src={shop.profiles.avatar_url} alt="" className="h-full w-full object-cover" /> : "👤"}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t("boutique_owner")}</p>
+                  <p className="truncate text-sm font-bold">{shop.profiles.name}</p>
+                </div>
+                <Phone size={15} className="shrink-0 text-primary" />
+              </Link>
+            )}
+            <dl className="space-y-2 text-sm">
             {[
               [t("boutique_category"), shop.category],
               [t("boutique_since"), `${t("common_since")} ${new Date(shop.created_at).toLocaleDateString(locale)}`],
@@ -204,7 +228,8 @@ export default function BoutiquePage() {
                 <dd className="font-semibold">{v}</dd>
               </div>
             ))}
-          </dl>
+            </dl>
+          </div>
         )}
 
         {tab === "loc" && (
@@ -243,6 +268,7 @@ export default function BoutiquePage() {
 
       <div className="lg:hidden"><BottomNav /></div>
       <GuestPrompt open={showGuestPrompt} onClose={() => setShowGuestPrompt(false)} />
+      <ReportDialog open={showReport} onClose={() => setShowReport(false)} targetType="shop" targetId={shop.id} />
       </div>
     </div>
   );

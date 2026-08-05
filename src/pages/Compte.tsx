@@ -2,15 +2,16 @@ import { Link, useNavigate } from "react-router-dom";
 import { AppShell } from "@/components/app-shell";
 import { useApp } from "@/lib/app-store";
 import { useAuth } from "@/lib/auth";
-import { useWishlist, useMyShops, useMyTransactions, useMyViews7d, useMoveProduct } from "@/lib/queries";
+import { useWishlist, useMyShops, useMyTransactions, useMyViews7d, useMoveProduct, useUpdateProfile, useUpdateShop, uploadImage } from "@/lib/queries";
+import { compressImage } from "@/lib/image";
 import { Pepite } from "@/components/pepite";
 import { MiniBarChart } from "@/components/mini-chart";
 import { ShopListSkeleton } from "@/components/skeletons";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Bookmark, Heart, Star, Store, Moon, Sun, Languages, Settings, ChevronRight,
   ShoppingBag, LogOut, Sparkles, TrendingUp, ShieldCheck, MessageSquarePlus,
-  LayoutDashboard, Plus, Loader2, FileText,
+  LayoutDashboard, Plus, Loader2, FileText, Camera,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -67,7 +68,7 @@ function useMyShopStats(shopIds: string[]) {
 
 export default function ComptePage() {
   const { theme, toggleTheme, lang, setLang, dataSaver, toggleDataSaver, t } = useApp();
-  const { profile, signOut } = useAuth();
+  const { profile, signOut, session } = useAuth();
   const navigate = useNavigate();
   const [tab, setTab] = useState<"achats" | "boutique">("achats");
   const { data: wishlistData = [] } = useWishlist();
@@ -79,7 +80,49 @@ export default function ComptePage() {
   const { data: stats } = useMyShopStats(shopIds);
   const { data: views7d } = useMyViews7d(shopIds, stats?.productIds ?? []);
   const moveProduct = useMoveProduct();
+  const updateProfile = useUpdateProfile();
+  const updateShop = useUpdateShop();
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [uploadingShopId, setUploadingShopId] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const shopLogoInputRef = useRef<HTMLInputElement>(null);
+  const shopBeingEdited = useRef<string | null>(null);
   const pepitesSpent = transactions.filter((t: any) => t.amount < 0).reduce((s: number, t: any) => s + Math.abs(t.amount), 0);
+
+  async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !session) return;
+    setUploadingAvatar(true);
+    try {
+      const compressed = await compressImage(file, 500, 0.8);
+      const url = await uploadImage("avatars", session.user.id, compressed);
+      await updateProfile.mutateAsync({ avatar_url: url });
+      toast.success(t("compte_avatarUpdated"));
+    } catch (err: any) {
+      toast.error(t("compte_photoUpdateFailed"), { description: err.message });
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }
+
+  async function handleShopLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    const shopId = shopBeingEdited.current;
+    e.target.value = "";
+    if (!file || !session || !shopId) return;
+    setUploadingShopId(shopId);
+    try {
+      const compressed = await compressImage(file, 500, 0.8);
+      const url = await uploadImage("shop-logos", session.user.id, compressed);
+      await updateShop.mutateAsync({ shopId, logo_url: url });
+      toast.success(t("compte_shopLogoUpdated"));
+    } catch (err: any) {
+      toast.error(t("compte_photoUpdateFailed"), { description: err.message });
+    } finally {
+      setUploadingShopId(null);
+    }
+  }
 
   async function handleLogout() {
     await signOut();
@@ -91,9 +134,17 @@ export default function ComptePage() {
       <div className="p-4">
         <div className="rounded-2xl border border-border bg-card p-4">
           <div className="flex items-center gap-3">
-            <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-full gold-gradient text-xl font-bold">
+            <button
+              onClick={() => avatarInputRef.current?.click()}
+              className="relative grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-full gold-gradient text-xl font-bold"
+              aria-label={t("compte_editAvatar")}
+            >
               {profile?.avatar_url ? <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" /> : profile?.name?.[0]?.toUpperCase() ?? "?"}
-            </div>
+              <span className="absolute inset-0 grid place-items-center bg-background/40">
+                {uploadingAvatar ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+              </span>
+            </button>
+            <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
             <div className="min-w-0 flex-1">
               <p className="text-base font-bold">{profile?.name ?? "…"}</p>
               <p className="text-xs text-muted-foreground">{profile?.phone}</p>
@@ -237,9 +288,21 @@ export default function ComptePage() {
                   <div className="space-y-2">
                     {myShops.map((s: any) => (
                       <Link key={s.id} to={`/boutique/${s.id}`} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
-                        <div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl bg-accent text-xl">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            shopBeingEdited.current = s.id;
+                            shopLogoInputRef.current?.click();
+                          }}
+                          aria-label={t("compte_editShopLogo")}
+                          className="relative grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl bg-accent text-xl"
+                        >
                           {s.logo_url ? <img src={s.logo_url} alt="" className="h-full w-full object-cover" /> : "🏪"}
-                        </div>
+                          <span className="absolute inset-0 grid place-items-center bg-background/60">
+                            {uploadingShopId === s.id ? <Loader2 size={14} className="animate-spin" /> : <Camera size={13} />}
+                          </span>
+                        </button>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-semibold">{s.name}</p>
                           <p className="text-[11px] text-muted-foreground">{s.category}</p>
@@ -248,6 +311,7 @@ export default function ComptePage() {
                       </Link>
                     ))}
                   </div>
+                  <input ref={shopLogoInputRef} type="file" accept="image/*" className="hidden" onChange={handleShopLogoChange} />
                 </div>
               </>
             )}

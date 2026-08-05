@@ -178,6 +178,12 @@ export default function ProduitPage() {
               <span className="truncate text-sm font-semibold">{shop.name}</span>
               {shop.verified && <BadgeCheck size={14} className="shrink-0 fill-[color:var(--verified)] text-background" />}
             </div>
+            {reviews.length > 0 && (
+              <span className="flex items-center gap-0.5 text-[11px] text-muted-foreground">
+                <Star size={11} className="fill-primary text-primary" />
+                {(reviews.reduce((s: number, r: any) => s + r.rating, 0) / reviews.length).toFixed(1)} ({reviews.length})
+              </span>
+            )}
           </div>
           {shop.verified && <VerifiedBadge />}
         </Link>
