@@ -9,6 +9,8 @@ import { LaGueriteChat } from "@/components/la-guerite-chat";
 import { OfflineBanner } from "@/components/offline-banner";
 import { OnboardingTour } from "@/components/onboarding-tour";
 import { SplashScreen } from "@/components/splash-screen";
+import { InstallPrompt } from "@/components/install-prompt";
+import { EngagementPopups } from "@/components/engagement-popups";
 import { registerPwa } from "@/lib/pwa";
 
 // Chaque page est chargée à la demande (code-splitting) : le navigateur ne
@@ -27,6 +29,7 @@ const AdminPage = lazy(() => import("@/pages/Admin"));
 const RechargePage = lazy(() => import("@/pages/Recharge"));
 const SuggestionsPage = lazy(() => import("@/pages/Suggestions"));
 const CguPage = lazy(() => import("@/pages/Cgu"));
+const ProfilPage = lazy(() => import("@/pages/Profil"));
 
 const queryClient = new QueryClient();
 
@@ -67,6 +70,7 @@ function AppRoutes() {
             <Route path="/boutique/:id" element={<BoutiquePage />} />
             <Route path="/produit/:id" element={<ProduitPage />} />
             <Route path="/cgu" element={<CguPage />} />
+            <Route path="/profil/:id" element={<ProfilPage />} />
 
             {/* Nécessitent un compte */}
             <Route path="/creer-boutique" element={<RequireAuth><CreerBoutiquePage /></RequireAuth>} />
@@ -113,6 +117,8 @@ export default function App() {
             <OfflineBanner />
             <AppRoutes />
             <LaGueriteChat />
+            <InstallPrompt />
+            <EngagementPopups />
             <AuthedExtras />
             <Toaster position="top-center" theme="dark" />
           </BrowserRouter>
