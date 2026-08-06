@@ -22,6 +22,10 @@ import {
   useSuspendAccount,
   useAdminDeleteAccount,
   useAdjustPepites,
+  useAdminDeletePost,
+  useAdminDeleteProduct,
+  usePosts,
+  useProducts,
 } from "@/lib/queries";
 import { useApp } from "@/lib/app-store";
 import {
@@ -47,6 +51,7 @@ import {
   UserCheck,
   Coins,
   Search,
+  FileText,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -102,7 +107,7 @@ function useAdminMetrics() {
   });
 }
 
-type AdminTab = "overview" | "moderation" | "shops" | "accounts";
+type AdminTab = "overview" | "moderation" | "shops" | "accounts" | "content";
 
 export default function AdminPage() {
   const { profile } = useAuth();
@@ -174,11 +179,13 @@ export default function AdminPage() {
         <TabButton active={tab === "moderation"} onClick={() => setTab("moderation")} icon={Flag} label={t("admin_tabModeration")} badge={reports.length} />
         <TabButton active={tab === "shops"} onClick={() => setTab("shops")} icon={Store} label={t("admin_tabShops")} />
         <TabButton active={tab === "accounts"} onClick={() => setTab("accounts")} icon={Users} label={t("admin_tabAccounts")} />
+        <TabButton active={tab === "content"} onClick={() => setTab("content")} icon={FileText} label={t("admin_tabContent")} />
       </div>
 
       {tab === "moderation" && <ModerationTab reports={reports} />}
       {tab === "shops" && <ShopsTab />}
       {tab === "accounts" && <AccountsTab />}
+      {tab === "content" && <ContentTab />}
 
       {tab === "overview" && (
       <div className="space-y-4 p-4">
@@ -622,6 +629,100 @@ function ChartCard({ title, data, labels }: { title: string; data: number[]; lab
     <div className="rounded-2xl border border-border bg-card p-3">
       <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{title}</p>
       <MiniBarChart data={data} labels={labels} />
+    </div>
+  );
+}
+
+
+// ============================================================
+// MODÉRATION DES CONTENUS — l'administrateur peut supprimer
+// définitivement n'importe quelle publication ou n'importe quel
+// article, sans passer par un signalement préalable.
+// ============================================================
+function ContentTab() {
+  const { t } = useApp();
+  const { data: posts = [], isLoading: loadingPosts } = usePosts();
+  const { data: products = [], isLoading: loadingProducts } = useProducts();
+  const deletePost = useAdminDeletePost();
+  const deleteProduct = useAdminDeleteProduct();
+  const [confirm, setConfirm] = useState<{ kind: "post" | "product"; id: string; label: string } | null>(null);
+
+  async function handleDelete() {
+    if (!confirm) return;
+    try {
+      if (confirm.kind === "post") await deletePost.mutateAsync(confirm.id);
+      else await deleteProduct.mutateAsync(confirm.id);
+      toast.success(t("admin_contentDeleted"));
+    } catch (err: any) {
+      toast.error(t("admin_actionFailed"), { description: err.message });
+    } finally {
+      setConfirm(null);
+    }
+  }
+
+  const empty = !loadingPosts && !loadingProducts && posts.length === 0 && products.length === 0;
+
+  return (
+    <div className="space-y-5 p-4">
+      {empty && (
+        <p className="rounded-xl border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
+          {t("admin_noContent")}
+        </p>
+      )}
+
+      <section>
+        <h2 className="mb-2 text-sm font-semibold">{t("admin_recentPosts")}</h2>
+        <div className="space-y-2">
+          {posts.slice(0, 30).map((p: any) => (
+            <div key={p.id} className="flex items-center gap-3 rounded-xl border border-border bg-card p-2.5">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-semibold">{p.profiles?.name ?? "—"}</p>
+                <p className="line-clamp-2 text-[11px] text-muted-foreground">{p.text}</p>
+              </div>
+              <button
+                onClick={() => setConfirm({ kind: "post", id: p.id, label: t("admin_deletePost") })}
+                aria-label={t("admin_deletePost")}
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-destructive"
+              >
+                <Trash2 size={14} className="text-destructive" />
+              </button>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-2 text-sm font-semibold">{t("admin_recentProducts")}</h2>
+        <div className="space-y-2">
+          {products.slice(0, 30).map((p: any) => (
+            <div key={p.id} className="flex items-center gap-3 rounded-xl border border-border bg-card p-2.5">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-semibold">{p.name}</p>
+                <p className="truncate text-[11px] text-muted-foreground">
+                  {p.shops?.name ?? "—"} · {formatXAF(p.price_xaf)}
+                </p>
+              </div>
+              <button
+                onClick={() => setConfirm({ kind: "product", id: p.id, label: t("admin_deleteProduct") })}
+                aria-label={t("admin_deleteProduct")}
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-destructive"
+              >
+                <Trash2 size={14} className="text-destructive" />
+              </button>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <ConfirmDialog
+        open={!!confirm}
+        title={confirm?.label ?? ""}
+        description={t("admin_deleteConfirm")}
+        destructive
+        confirmLabel={t("common_delete")}
+        onOpenChange={(v) => !v && setConfirm(null)}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }
