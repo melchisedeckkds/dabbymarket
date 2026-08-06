@@ -17,6 +17,7 @@ empaquetage Android via Capacitor.
    - `0006_unread_messages.sql`
    - `0007_auto_payment_confirmation.sql`
    - `0008_fix_phone_trigger.sql`
+   - `0009_moderation_ratings.sql` (modération admin + notation des boutiques)
 3. Dans **Project Settings → API**, récupère `Project URL` et `anon public key`.
 
 ## 2. Configurer l'app
@@ -164,6 +165,22 @@ Auth, Marché, Carte, Boutique, Produit, Créer Boutique, Publier, Messages
 - **Bilinguisme complet FR/EN** : toute l'interface (navigation, formulaires,
   messages, notifications) est traduite, y compris les réponses de La
   Guérite qui répond dans la langue choisie par l'utilisateur.
+
+## Modération et notation (migration 0009)
+
+- **Console admin élargie** : onglets Modération (signalements), Boutiques
+  (bloquer/débloquer, certifier), Comptes (suspendre, supprimer, ajuster les
+  Pépites) et Contenus (supprimer une publication ou un article).
+- **Notation des boutiques 1→5 étoiles**, uniquement après confirmation de
+  réception d'une commande — moyenne et nombre de votes affichés partout.
+- **Fenêtre d'installation PWA** proposée à chaque chargement tant que
+  l'application n'est pas installée, et **fenêtres d'incitation** (30 s,
+  fermables) selon le contexte.
+- **Page profil publique** `/profil/:id` : infos de l'utilisateur, ses
+  boutiques et ses publications.
+
+Voir `GUIDE_MISE_A_JOUR.md` pour le détail et la procédure de mise à jour
+GitHub.
 
 ## Encore à faire (voir recommandations précédentes)
 
