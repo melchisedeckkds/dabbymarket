@@ -270,6 +270,21 @@ export function usePosts() {
 
 const POSTS_PAGE_SIZE = 12;
 
+// Récupère une publication précise (utilisé pour le lien profond
+// depuis le profil public, même si elle n'est pas encore chargée
+// dans le fil paginé du Marché).
+export function useSinglePost(postId: string | undefined) {
+  return useQuery({
+    queryKey: ["post", postId],
+    enabled: !!postId,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("posts").select("*, profiles(*)").eq("id", postId).single();
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
 // Version paginée pour le scroll infini du Marché (voir useInfiniteProducts)
 export function useInfinitePosts() {
   return useInfiniteQuery({
@@ -352,6 +367,7 @@ export function useToggleLike() {
 export function useLikes(productId?: string, postId?: string) {
   return useQuery({
     queryKey: ["likes", productId ?? postId],
+    enabled: !!(productId || postId),
     queryFn: async () => {
       let q = supabase.from("likes").select("*");
       q = productId ? q.eq("product_id", productId) : q.eq("post_id", postId!);
@@ -366,6 +382,7 @@ export function useLikes(productId?: string, postId?: string) {
 export function useComments(productId?: string, postId?: string) {
   return useQuery({
     queryKey: ["comments", productId ?? postId],
+    enabled: !!(productId || postId),
     queryFn: async () => {
       let q = supabase.from("comments").select("*, profiles(*)").order("created_at", { ascending: true });
       q = productId ? q.eq("product_id", productId) : q.eq("post_id", postId!);
