@@ -95,7 +95,7 @@ export default function BoutiquePage() {
     <div className="mx-auto flex min-h-screen w-full max-w-[1400px] bg-background lg:justify-center">
       <SidebarNav />
       <div className="flex min-h-screen w-full max-w-md flex-col bg-background pb-32 lg:max-w-2xl lg:border-x lg:border-border lg:pb-8">
-      <div className="relative h-40 w-full bg-gradient-to-br from-primary/30 to-card">
+      <div className="relative h-20 w-full bg-gradient-to-br from-primary/30 to-card">
         <Link to="/" className="absolute left-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-background/70 backdrop-blur" aria-label={t("common_back")}>
           <ArrowLeft size={18} />
         </Link>

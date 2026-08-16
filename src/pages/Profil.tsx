@@ -4,6 +4,7 @@ import { AppShell } from "@/components/app-shell";
 import { useApp } from "@/lib/app-store";
 import { useUserProfile, useUserShops, useUserPosts, useShopRatingsMap } from "@/lib/queries";
 import { ShopHeaderSkeleton } from "@/components/skeletons";
+import { maskPhone } from "@/lib/utils";
 
 export default function ProfilPage() {
   const { id } = useParams<{ id: string }>();
@@ -42,7 +43,7 @@ export default function ProfilPage() {
           </div>
           <h2 className="mt-3 text-base font-bold">{profile.name}</h2>
           <p className="mt-0.5 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-            <Phone size={12} /> {profile.phone}
+            <Phone size={12} /> {maskPhone(profile.phone)}
           </p>
           <p className="mt-1 text-[11px] text-muted-foreground">
             {t("profil_memberSince")} {new Date(profile.created_at).toLocaleDateString(locale, { month: "long", year: "numeric" })}
@@ -91,13 +92,13 @@ export default function ProfilPage() {
           ) : (
             <div className="grid grid-cols-3 gap-1.5">
               {posts.map((p: any) => (
-                <div key={p.id} className="relative aspect-square overflow-hidden rounded-lg border border-border bg-accent">
+                <Link key={p.id} to={`/?post=${p.id}`} className="relative aspect-square overflow-hidden rounded-lg border border-border bg-accent">
                   {p.image_url ? (
                     <img src={p.image_url} alt="" className="h-full w-full object-cover" />
                   ) : (
                     <p className="line-clamp-4 p-1.5 text-[9px] leading-tight text-muted-foreground">{p.text}</p>
                   )}
-                </div>
+                </Link>
               ))}
             </div>
           )}

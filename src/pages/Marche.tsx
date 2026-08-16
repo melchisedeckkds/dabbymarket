@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   Search, Sparkles, Map as MapIcon, MessageCircle, Share2, Heart, Bookmark,
   Shirt, Smartphone, Utensils, Sofa, Wrench, LayoutGrid, Package, Loader2,
@@ -8,9 +8,10 @@ import { motion } from "framer-motion";
 import { ImageLightbox } from "@/components/image-lightbox";
 import { AppShell } from "@/components/app-shell";
 import { ProductCard } from "@/components/product-card";
-import { useInfiniteProducts, useInfinitePosts, useToggleLike, useLikes, useComments, useShopRatingsMap } from "@/lib/queries";
+import { useInfiniteProducts, useInfinitePosts, useSinglePost, useToggleLike, useLikes, useComments, useShopRatingsMap } from "@/lib/queries";
 import { CommentSheet } from "@/components/comment-sheet";
 import { GuestPrompt } from "@/components/guest-prompt";
+import { HashtagText } from "@/components/hashtag-text";
 import { hapticLight } from "@/lib/haptics";
 import { useAuth } from "@/lib/auth";
 import { shareContent } from "@/lib/share";
@@ -26,9 +27,24 @@ const fadeUp = {
 
 export default function MarchePage() {
   const { t } = useApp();
-  const [q, setQ] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [q, setQ] = useState(() => searchParams.get("q") ?? "");
   const [cat, setCat] = useState<string | null>(null);
   const [condition, setCondition] = useState<"all" | "Neuf" | "Occasion">("all");
+
+  // Lien profond `/?post=<id>` (ex. depuis un profil) : ouvre directement
+  // la publication en plein écran avec sa légende, ses likes et ses
+  // commentaires, même si elle n'est pas encore chargée dans le fil.
+  const deepLinkPostId = searchParams.get("post") ?? undefined;
+  const { data: deepLinkPost } = useSinglePost(deepLinkPostId);
+  const { data: deepLinkLikes = [] } = useLikes(undefined, deepLinkPostId);
+  const { data: deepLinkComments = [] } = useComments(undefined, deepLinkPostId);
+  const [deepLinkShowComments, setDeepLinkShowComments] = useState(false);
+  function closeDeepLink() {
+    const next = new URLSearchParams(searchParams);
+    next.delete("post");
+    setSearchParams(next, { replace: true });
+  }
 
   const {
     data: productsPages,
@@ -196,6 +212,43 @@ export default function MarchePage() {
           </div>
         )}
       </div>
+      {deepLinkPost && deepLinkPost.image_url && (
+        <ImageLightbox
+          src={deepLinkPost.image_url}
+          onClose={closeDeepLink}
+          caption={deepLinkPost.text}
+          authorName={deepLinkPost.profiles?.name}
+          likesCount={deepLinkLikes.length}
+          commentsCount={deepLinkComments.length}
+          onOpenComments={() => setDeepLinkShowComments(true)}
+        />
+      )}
+      {deepLinkPost && !deepLinkPost.image_url && (
+        <div className="fixed inset-0 z-[950] flex items-center justify-center bg-background/90 p-4 backdrop-blur-md" onClick={closeDeepLink}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl border border-border bg-card p-4 shadow-2xl">
+            <div className="mb-2 flex items-center gap-2">
+              <span className="grid h-8 w-8 place-items-center overflow-hidden rounded-full bg-accent text-base">
+                {deepLinkPost.profiles?.avatar_url ? <img src={deepLinkPost.profiles.avatar_url} alt="" className="h-full w-full object-cover" /> : "👤"}
+              </span>
+              <span className="text-sm font-semibold">{deepLinkPost.profiles?.name}</span>
+            </div>
+            <p className="text-[15px] text-foreground/90">
+              <HashtagText text={deepLinkPost.text} className="font-caption" />
+            </p>
+            <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Heart size={13} className="fill-current" /> {deepLinkLikes.length}
+              </span>
+              <button onClick={() => setDeepLinkShowComments(true)} className="flex items-center gap-1">
+                <MessageCircle size={13} /> {deepLinkComments.length}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {deepLinkShowComments && deepLinkPostId && (
+        <CommentSheet postId={deepLinkPostId} onClose={() => setDeepLinkShowComments(false)} />
+      )}
     </AppShell>
   );
 }
@@ -302,17 +355,32 @@ function TextPost({ post }: { post: any }) {
         </p>
       )}
 
-      {/* Légende */}
-      <p className="px-3 pb-1 pt-1.5 text-sm leading-relaxed">
-        <span className="font-semibold">{author?.name ?? "DabbyMarket"}</span> {post.text}
-      </p>
+      {/* Légende — typographie raffinée, sans répéter le nom déjà visible dans l'en-tête */}
+      {post.text && (
+        <p className="px-3 pb-1 pt-1.5 text-[15px] text-foreground/90">
+          <HashtagText text={post.text} className="font-caption" />
+        </p>
+      )}
 
       {/* Lien vers les commentaires */}
       <button onClick={() => setShowComments(true)} className="px-3 pb-3 text-left text-xs text-muted-foreground">
         {postComments.length > 0 ? `${t("marche_viewComments")} (${postComments.length})` : t("comments_empty")}
       </button>
 
-      {lightboxOpen && post.image_url && <ImageLightbox src={post.image_url} onClose={() => setLightboxOpen(false)} />}
+      {lightboxOpen && post.image_url && (
+        <ImageLightbox
+          src={post.image_url}
+          onClose={() => setLightboxOpen(false)}
+          caption={post.text}
+          authorName={author?.name}
+          likesCount={likesData.length}
+          commentsCount={postComments.length}
+          onOpenComments={() => {
+            setLightboxOpen(false);
+            setShowComments(true);
+          }}
+        />
+      )}
       {showComments && <CommentSheet postId={post.id} onClose={() => setShowComments(false)} />}
       <GuestPrompt open={showGuestPrompt} onClose={() => setShowGuestPrompt(false)} />
     </article>
