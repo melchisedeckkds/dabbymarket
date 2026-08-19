@@ -20,30 +20,15 @@ export function useShop(id: string | undefined) {
     queryKey: ["shop", id],
     enabled: !!id,
     queryFn: async () => {
-      const { data, error } = await supabase.from("shops").select("*, profiles(*)").eq("id", id).single();
+      const { data, error } = await supabase.from("shops").select("*").eq("id", id).single();
       if (error) throw error;
       return data;
     },
   });
 }
 
-export function useUpdateShop() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: { shopId: string; logo_url?: string; name?: string; description?: string }) => {
-      const { shopId, ...patch } = input;
-      const { error } = await supabase.from("shops").update(patch).eq("id", shopId);
-      if (error) throw error;
-    },
-    onSuccess: (_data, vars) => {
-      qc.invalidateQueries({ queryKey: ["shops"] });
-      qc.invalidateQueries({ queryKey: ["shop", vars.shopId] });
-      qc.invalidateQueries({ queryKey: ["my-shops"] });
-    },
-  });
-}
-
-// Moyenne + nombre d'avis par boutique, pour affichage compact (cartes produits/articles)
+// Moyenne + nombre d'avis par boutique, pour affichage/tri compact
+// (cartes produits/articles, Carte, listes) sans recharger tous les avis.
 export function useShopRatingsMap(shopIds: string[]) {
   const ids = [...new Set(shopIds)].filter(Boolean).sort();
   return useQuery({
@@ -63,7 +48,11 @@ export function useCreateShop() {
   const qc = useQueryClient();
   const { session } = useAuth();
   return useMutation({
-    mutationFn: async (input: { name: string; description: string; category: string; logo_url?: string; lat?: number; lng?: number }) => {
+    mutationFn: async (input: {
+      name: string; description: string; category: string; logo_url?: string; lat?: number; lng?: number;
+      shop_type?: "physical" | "no_location"; neighborhood?: string; city?: string; landmark?: string;
+      photos?: string[]; delivery_zone?: string; hours?: any;
+    }) => {
       if (!session?.user?.id) throw new Error("Connecte-toi d'abord");
       const { data, error } = await supabase
         .from("shops")
@@ -84,58 +73,6 @@ export function useMyShops() {
     enabled: !!session?.user?.id,
     queryFn: async () => {
       const { data, error } = await supabase.from("shops").select("*").eq("owner_id", session!.user.id);
-      if (error) throw error;
-      return data;
-    },
-  });
-}
-
-// ============ PROFILS PUBLICS ============
-export function useUpdateProfile() {
-  const qc = useQueryClient();
-  const { session, refreshProfile } = useAuth();
-  return useMutation({
-    mutationFn: async (input: { name?: string; avatar_url?: string }) => {
-      const { error } = await supabase.from("profiles").update(input).eq("id", session!.user.id);
-      if (error) throw error;
-    },
-    onSuccess: async () => {
-      await refreshProfile();
-      qc.invalidateQueries({ queryKey: ["posts"] });
-    },
-  });
-}
-
-export function useUserProfile(userId: string | undefined) {
-  return useQuery({
-    queryKey: ["user-profile", userId],
-    enabled: !!userId,
-    queryFn: async () => {
-      const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single();
-      if (error) throw error;
-      return data;
-    },
-  });
-}
-
-export function useUserShops(userId: string | undefined) {
-  return useQuery({
-    queryKey: ["user-shops", userId],
-    enabled: !!userId,
-    queryFn: async () => {
-      const { data, error } = await supabase.from("shops").select("*").eq("owner_id", userId!).order("created_at", { ascending: false });
-      if (error) throw error;
-      return data;
-    },
-  });
-}
-
-export function useUserPosts(userId: string | undefined) {
-  return useQuery({
-    queryKey: ["user-posts", userId],
-    enabled: !!userId,
-    queryFn: async () => {
-      const { data, error } = await supabase.from("posts").select("*, profiles(*)").eq("author_id", userId!).order("created_at", { ascending: false });
       if (error) throw error;
       return data;
     },
@@ -268,43 +205,6 @@ export function usePosts() {
   });
 }
 
-const POSTS_PAGE_SIZE = 12;
-
-// Récupère une publication précise (utilisé pour le lien profond
-// depuis le profil public, même si elle n'est pas encore chargée
-// dans le fil paginé du Marché).
-export function useSinglePost(postId: string | undefined) {
-  return useQuery({
-    queryKey: ["post", postId],
-    enabled: !!postId,
-    queryFn: async () => {
-      const { data, error } = await supabase.from("posts").select("*, profiles(*)").eq("id", postId).single();
-      if (error) throw error;
-      return data;
-    },
-  });
-}
-
-// Version paginée pour le scroll infini du Marché (voir useInfiniteProducts)
-export function useInfinitePosts() {
-  return useInfiniteQuery({
-    queryKey: ["posts-infinite"],
-    initialPageParam: 0,
-    queryFn: async ({ pageParam }) => {
-      const from = pageParam * POSTS_PAGE_SIZE;
-      const to = from + POSTS_PAGE_SIZE - 1;
-      const { data, error } = await supabase
-        .from("posts")
-        .select("*, profiles(*)")
-        .order("created_at", { ascending: false })
-        .range(from, to);
-      if (error) throw error;
-      return data ?? [];
-    },
-    getNextPageParam: (lastPage, allPages) => (lastPage.length < POSTS_PAGE_SIZE ? undefined : allPages.length),
-  });
-}
-
 export function useCreatePost() {
   const qc = useQueryClient();
   const { session } = useAuth();
@@ -367,7 +267,6 @@ export function useToggleLike() {
 export function useLikes(productId?: string, postId?: string) {
   return useQuery({
     queryKey: ["likes", productId ?? postId],
-    enabled: !!(productId || postId),
     queryFn: async () => {
       let q = supabase.from("likes").select("*");
       q = productId ? q.eq("product_id", productId) : q.eq("post_id", postId!);
@@ -382,7 +281,6 @@ export function useLikes(productId?: string, postId?: string) {
 export function useComments(productId?: string, postId?: string) {
   return useQuery({
     queryKey: ["comments", productId ?? postId],
-    enabled: !!(productId || postId),
     queryFn: async () => {
       let q = supabase.from("comments").select("*, profiles(*)").order("created_at", { ascending: true });
       q = productId ? q.eq("product_id", productId) : q.eq("post_id", postId!);
@@ -662,164 +560,6 @@ export function useConfirmRecharge() {
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["pending-recharges"] }),
-  });
-}
-
-export function useAdminShops() {
-  return useQuery({
-    queryKey: ["admin-shops"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("shops").select("*, profiles(name, phone)").order("created_at", { ascending: false });
-      if (error) throw error;
-      return data;
-    },
-  });
-}
-
-export function useSetShopBlocked() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: { shopId: string; blocked: boolean; reason?: string }) => {
-      const { error } = await supabase.rpc("admin_set_shop_blocked", {
-        p_shop_id: input.shopId,
-        p_blocked: input.blocked,
-        p_reason: input.reason ?? null,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["admin-shops"] });
-      qc.invalidateQueries({ queryKey: ["shops"] });
-    },
-  });
-}
-
-export function useSetShopVerified() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: { shopId: string; verified: boolean }) => {
-      const { error } = await supabase.rpc("admin_set_shop_verified", { p_shop_id: input.shopId, p_verified: input.verified });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["admin-shops"] });
-      qc.invalidateQueries({ queryKey: ["shops"] });
-    },
-  });
-}
-
-export function useAdminDeletePost() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (postId: string) => {
-      const { error } = await supabase.rpc("admin_delete_post", { p_post_id: postId });
-      if (error) throw error;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["posts"] }),
-  });
-}
-
-export function useAdminDeleteProduct() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (productId: string) => {
-      const { error } = await supabase.rpc("admin_delete_product", { p_product_id: productId });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["products"] });
-      qc.invalidateQueries({ queryKey: ["admin-metrics"] });
-    },
-  });
-}
-
-export function useAdminUsers() {
-  return useQuery({
-    queryKey: ["admin-users"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("profiles").select("*").order("created_at", { ascending: false });
-      if (error) throw error;
-      return data;
-    },
-  });
-}
-
-export function useSuspendAccount() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: { userId: string; suspended: boolean }) => {
-      const { error } = await supabase.rpc("admin_suspend_account", { p_user_id: input.userId, p_suspended: input.suspended });
-      if (error) throw error;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-users"] }),
-  });
-}
-
-export function useAdminDeleteAccount() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (userId: string) => {
-      const { error } = await supabase.rpc("admin_delete_account", { p_user_id: userId });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["admin-users"] });
-      qc.invalidateQueries({ queryKey: ["admin-shops"] });
-      qc.invalidateQueries({ queryKey: ["admin-metrics"] });
-    },
-  });
-}
-
-export function useAdjustPepites() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: { userId: string; amount: number; note?: string }) => {
-      const { error } = await supabase.rpc("admin_adjust_pepites", { p_user_id: input.userId, p_amount: input.amount, p_note: input.note ?? null });
-      if (error) throw error;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-users"] }),
-  });
-}
-
-// ============ SIGNALEMENTS ============
-export function useReports() {
-  return useQuery({
-    queryKey: ["reports"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("reports")
-        .select("*, profiles(name, phone)")
-        .eq("status", "pending")
-        .order("created_at", { ascending: true });
-      if (error) throw error;
-      return data;
-    },
-  });
-}
-
-export function useCreateReport() {
-  const { session } = useAuth();
-  return useMutation({
-    mutationFn: async (input: { targetType: "shop" | "product" | "post" | "user"; targetId: string; reason: string }) => {
-      const { error } = await supabase.from("reports").insert({
-        reporter_id: session!.user.id,
-        target_type: input.targetType,
-        target_id: input.targetId,
-        reason: input.reason,
-      });
-      if (error) throw error;
-    },
-  });
-}
-
-export function useResolveReport() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: { reportId: string; status: "resolved" | "dismissed" }) => {
-      const { error } = await supabase.rpc("admin_resolve_report", { p_report_id: input.reportId, p_status: input.status });
-      if (error) throw error;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["reports"] }),
   });
 }
 
