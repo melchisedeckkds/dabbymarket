@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { useApp } from "@/lib/app-store";
 import { useAuth } from "@/lib/auth";
 import { useEscapeToClose } from "@/hooks/use-escape-to-close";
+import { isOpenNow } from "@/lib/hours";
 import { GuestPrompt } from "./guest-prompt";
 import type { Lang } from "@/lib/i18n";
 
@@ -22,11 +23,18 @@ function buildSystemPrompt(shops: any[], products: any[], lang: Lang, languageIn
   const now = Date.now();
   const boosted = products.filter((p) => p.boosted_until && new Date(p.boosted_until).getTime() > now);
 
-  const shopsLine = shops.map((s) => `- ${s.name} (${s.category})${s.verified ? " ✓" : ""}`).join("\n");
+  const shopsLine = shops
+    .map((s) => {
+      const loc = s.shop_type === "no_location" ? "sans emplacement physique" : [s.neighborhood, s.city].filter(Boolean).join(", ") || "emplacement non renseigné";
+      const open = isOpenNow(s.hours);
+      const openLabel = open === null ? "" : open ? " — ouvert maintenant" : " — fermé actuellement";
+      return `- ${s.name} (${s.category})${s.verified ? " ✓vérifiée" : ""} — ${loc}${openLabel}`;
+    })
+    .join("\n");
   const productsLine = products
     .map(
       (p) =>
-        `- [${p.id}] ${p.name} — ${formatXAF(p.price_xaf)} — ${p.category} — ${p.condition}${boosted.some((b) => b.id === p.id) ? " ⚡BOOSTÉ" : ""}`,
+        `- [${p.id}] ${p.name} — ${formatXAF(p.price_xaf)} — ${p.category} — ${p.condition}${boosted.some((b) => b.id === p.id) ? " ⚡boostée" : ""}`,
     )
     .join("\n");
 
@@ -42,9 +50,12 @@ TON STYLE :
 TON RÔLE :
 1. Orienter dans l'application (Le Marché, La Carte, Publier, Booster, Mon Compte)
 2. Présenter les tendances du marché de façon factuelle
-3. Recommander en priorité les produits signalés BOOSTÉS — mise en avant financée par les vendeurs
-4. Ensuite, proposer les produits les plus pertinents pour la demande formulée
-5. Orienter vers les boutiques appropriées selon la catégorie recherchée
+3. Recommander les produits et boutiques les plus PERTINENTS pour la demande de l'utilisateur (catégorie, prix, quartier/proximité s'il les mentionne)
+4. Orienter vers les boutiques appropriées selon la catégorie recherchée
+
+HIÉRARCHIE DE RECOMMANDATION — RÈGLE ABSOLUE :
+PERTINENCE (correspond réellement à la demande) > QUALITÉ/CONFIANCE (vérifiée, bien notée) > PROXIMITÉ (quartier demandé) > BOOST.
+Le badge ⚡boostée n'est JAMAIS une raison de recommander un produit qui ne correspond pas à la demande — c'est uniquement un critère de départage entre deux résultats déjà également pertinents. Si l'utilisateur cherche un téléphone, ne mentionnez jamais une boutique de pâtisserie sous prétexte qu'elle est boostée.
 
 BASE DE DONNÉES RÉELLE DU MARCHÉ (à l'instant) :
 
@@ -54,9 +65,9 @@ ${shopsLine || "aucune boutique enregistrée pour l'instant"}
 PRODUITS (${products.length}) :
 ${productsLine || "aucun produit enregistré pour l'instant"}
 
-PRODUITS ACTUELLEMENT BOOSTÉS : ${boosted.length ? boosted.map((p) => p.name).join(", ") : "aucun pour l'instant — vous pouvez suggérer poliment à l'utilisateur de booster son produit pour gagner en visibilité"}
+PRODUITS ACTUELLEMENT BOOSTÉS : ${boosted.length ? boosted.map((p) => p.name).join(", ") : "aucun pour l'instant"}
 
-Ne mentionnez jamais un produit ou une boutique qui n'apparaît pas dans cette liste. Si la question sort du cadre du marché, ramenez la conversation avec courtoisie vers l'objet de DabbyMarket.
+Ne mentionnez jamais un produit ou une boutique qui n'apparaît pas dans cette liste. Si l'utilisateur mentionne un quartier ou "près de moi", privilégiez les boutiques dont l'emplacement correspond — vous n'avez pas accès à sa position GPS exacte, seulement au quartier s'il le précise. Si la question sort du cadre du marché, ramenez la conversation avec courtoisie vers l'objet de DabbyMarket.
 
 ${languageInstruction}`;
 }

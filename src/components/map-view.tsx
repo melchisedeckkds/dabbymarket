@@ -1,4 +1,4 @@
-import { MapContainer, TileLayer, Marker, useMap, useMapEvents, CircleMarker } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, useMap, useMapEvents, CircleMarker, Polyline } from "react-leaflet";
 import L from "leaflet";
 import { useEffect, useMemo, useRef } from "react";
 
@@ -11,6 +11,7 @@ export type ShopPin = {
   verified: boolean;
   lat: number;
   lng: number;
+  logo_url?: string | null;
 };
 
 function shopPin(shop: ShopPin, active: boolean) {
@@ -18,10 +19,13 @@ function shopPin(shop: ShopPin, active: boolean) {
   const bg = active ? "linear-gradient(135deg,#d4af37,#f2d675)" : "#1e1e1e";
   const color = active ? "#121212" : "#f5f5f5";
   const scale = active ? 1.1 : 1;
+  const inner = shop.logo_url
+    ? `<img src="${shop.logo_url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
+    : `<span>${shop.name.charAt(0).toUpperCase()}</span>`;
   const html = `
     <div class="dm-pin" style="transform:scale(${scale});">
-      <div class="dm-pin-body" style="background:${bg};color:${color};border-color:${ring};">
-        <span>${shop.name.charAt(0).toUpperCase()}</span>
+      <div class="dm-pin-body" style="background:${bg};color:${color};border-color:${ring};overflow:hidden;">
+        ${inner}
       </div>
       <div class="dm-pin-tail" style="border-top-color:${ring};"></div>
       ${active ? '<div class="dm-pin-pulse"></div>' : ""}
@@ -53,16 +57,19 @@ function FitToShops({
   user,
   focus,
   countryCenter,
+  routeActive,
 }: {
   shops: ShopPin[];
   user: GeoPoint | null;
   focus: [number, number] | null;
   countryCenter: [number, number] | null;
+  routeActive?: boolean;
 }) {
   const map = useMap();
   const didInitialCountryFly = useRef(false);
 
   useEffect(() => {
+    if (routeActive) return; // FitToRoute prend le relais du cadrage
     if (focus) {
       map.flyTo(focus, 15, { duration: 0.9 });
       return;
@@ -88,13 +95,40 @@ function FitToShops({
     if (!pts.length) return;
     const b = L.latLngBounds(pts);
     map.fitBounds(b.pad(0.35), { animate: true });
-  }, [shops, user, focus, map, countryCenter]);
+  }, [shops, user, focus, map, countryCenter, routeActive]);
+  return null;
+}
+
+// Cadre la carte sur l'ensemble du tracé calculé — c'est la Carte de
+// l'application elle-même qui guide, aucun lien externe n'est ouvert.
+function FitToRoute({ coordinates }: { coordinates: [number, number][] }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!coordinates.length) return;
+    map.fitBounds(L.latLngBounds(coordinates).pad(0.15), { animate: true });
+  }, [coordinates, map]);
   return null;
 }
 
 function MapClickHandler({ onMapClick }: { onMapClick?: () => void }) {
   useMapEvents({
     click: () => onMapClick?.(),
+  });
+  return null;
+}
+
+// Détecte un déplacement manuel de la carte (glisser ou zoomer à la
+// main) pour proposer "Rechercher dans cette zone" — ignore les
+// recentrages programmatiques (FitToShops/FitToRoute) en ne s'armant
+// qu'après un vrai geste utilisateur.
+function AreaSearchBridge({ onAreaChange }: { onAreaChange: (bounds: L.LatLngBounds | null) => void }) {
+  const armed = useRef(false);
+  useMapEvents({
+    dragstart: () => { armed.current = true; },
+    zoomstart: () => { armed.current = true; },
+    moveend: (e) => {
+      if (armed.current) onAreaChange(e.target.getBounds());
+    },
   });
   return null;
 }
@@ -108,6 +142,9 @@ export default function MapView({
   focus = null,
   countryCenter = null,
   onMapClick,
+  onAreaChange,
+  route,
+  routeApproximate,
 }: {
   shops: ShopPin[];
   selectedId: string | null;
@@ -117,6 +154,11 @@ export default function MapView({
   focus?: [number, number] | null;
   countryCenter?: [number, number] | null;
   onMapClick?: () => void;
+  onAreaChange?: (bounds: L.LatLngBounds | null) => void;
+  /** Tracé d'itinéraire calculé en interne (OSRM) — dessiné directement
+   * sur la carte de l'application, sans jamais quitter DabbyMarket. */
+  route?: [number, number][];
+  routeApproximate?: boolean;
 }) {
   const tileUrl = useMemo(
     () =>
@@ -135,8 +177,23 @@ export default function MapView({
       className="absolute inset-0 h-full w-full"
     >
       <TileLayer url={tileUrl} attribution="&copy; OpenStreetMap &copy; CARTO" />
-      <FitToShops shops={shops} user={user} focus={focus} countryCenter={countryCenter} />
+      <FitToShops shops={shops} user={user} focus={focus} countryCenter={countryCenter} routeActive={!!route?.length} />
       <MapClickHandler onMapClick={onMapClick} />
+      {onAreaChange && <AreaSearchBridge onAreaChange={onAreaChange} />}
+
+      {route && route.length > 1 && (
+        <>
+          <FitToRoute coordinates={route} />
+          <Polyline
+            positions={route}
+            pathOptions={
+              routeApproximate
+                ? { color: "#8a8a8a", weight: 4, opacity: 0.85, dashArray: "2,10" }
+                : { color: "#d4af37", weight: 5, opacity: 0.9 }
+            }
+          />
+        </>
+      )}
 
       {user && (
         <>
