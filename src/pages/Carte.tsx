@@ -2,19 +2,23 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Star, MessageCircle, PackageSearch, ChevronDown, Layers, X, Navigation,
-  Crosshair, Search, ShieldCheck, Loader2, MapPin, Clock,
+  Crosshair, Search, ShieldCheck, Loader2, MapPin, Clock, List, Map as MapIcon, RefreshCw,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { VerifiedBadge } from "@/components/product-card";
 import { useApp } from "@/lib/app-store";
 import { CATEGORIES } from "@/lib/categories";
+import { neighborhoodsFor } from "@/lib/neighborhoods";
+import { isOpenNow } from "@/lib/hours";
 import { useAuth } from "@/lib/auth";
-import { useShops, useProducts, useReviews, useStartConversation, useSendMessage } from "@/lib/queries";
+import { useShops, useProducts, useReviews, useStartConversation, useSendMessage, useShopRatingsMap } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import { useEscapeToClose } from "@/hooks/use-escape-to-close";
 import { COUNTRY_CODES, getCountryFromPhone } from "@/lib/country-codes";
 import { GuestPrompt } from "@/components/guest-prompt";
 import { toast } from "sonner";
+import type { LatLngBounds } from "leaflet";
+import { fetchRoute, type RouteResult, type ApproximateRoute } from "@/lib/routing";
 
 const MapView = lazy(() => import("@/components/map-view"));
 
@@ -62,18 +66,40 @@ function useGeolocation() {
 }
 
 export default function CartePage() {
-  const { theme, t } = useApp();
+  const { theme, t, lang } = useApp();
   const { profile } = useAuth();
   const { location, geoStatus, requestLocation } = useGeolocation();
   const { data: shops = [], isLoading } = useShops();
   const [selected, setSelected] = useState<any | null>(null);
   const [routeFor, setRouteFor] = useState<any | null>(null);
+  const [routeData, setRouteData] = useState<RouteResult | ApproximateRoute | null>(null);
+  const [routeProfile, setRouteProfile] = useState<"foot" | "driving">("foot");
+  const [routeLoading, setRouteLoading] = useState(false);
+
+  useEffect(() => {
+    if (!routeFor || !location) return;
+    let cancelled = false;
+    setRouteLoading(true);
+    fetchRoute(location, { lat: routeFor.lat, lng: routeFor.lng }, routeProfile, lang === "en" ? "en" : "fr").then((r) => {
+      if (!cancelled) {
+        setRouteData(r);
+        setRouteLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [routeFor, location, routeProfile, lang]);
   const [cat, setCat] = useState<string | null>(null);
   const [distMax, setDistMax] = useState(20);
   const [query, setQuery] = useState("");
   const [mounted, setMounted] = useState(false);
   const [focus, setFocus] = useState<[number, number] | null>(null);
   const [showLocateSheet, setShowLocateSheet] = useState(false);
+  const [view, setView] = useState<"map" | "list">("map");
+  const [neighborhood, setNeighborhood] = useState<string | null>(null);
+  const [openNowOnly, setOpenNowOnly] = useState(false);
+  const [areaBounds, setAreaBounds] = useState<LatLngBounds | null>(null);
+  const [pendingBounds, setPendingBounds] = useState<LatLngBounds | null>(null);
+  const areaDirty = !!pendingBounds;
   useEscapeToClose(showLocateSheet, () => setShowLocateSheet(false));
   useEscapeToClose(!!selected, () => setSelected(null));
 
@@ -84,24 +110,51 @@ export default function CartePage() {
 
   useEffect(() => setMounted(true), []);
 
+  // Lien profond depuis une position partagée en messagerie (/carte?lat=&lng=) :
+  // centre directement la carte de l'application sur ce point, en interne.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const lat = Number(params.get("lat"));
+    const lng = Number(params.get("lng"));
+    if (!Number.isNaN(lat) && !Number.isNaN(lng) && lat && lng) {
+      setFocus([lat, lng]);
+    }
+  }, []);
+
   const shopsWithDistance = useMemo(
     () =>
       shops
-        .filter((s: any) => s.lat != null && s.lng != null)
+        .filter((s: any) => s.shop_type !== "no_location" && s.lat != null && s.lng != null)
         .map((s: any) => ({ ...s, distanceKm: location ? haversineKm(location, s) : null })),
     [shops, location],
   );
 
-  const filtered = useMemo(
-    () =>
-      shopsWithDistance.filter((s: any) => {
-        if (cat && s.category !== cat) return false;
-        if (s.distanceKm != null && s.distanceKm > distMax) return false;
-        if (query && !`${s.name}`.toLowerCase().includes(query.toLowerCase())) return false;
-        return true;
-      }),
-    [shopsWithDistance, cat, distMax, query],
-  );
+  const shopIds = useMemo(() => shopsWithDistance.map((s: any) => s.id), [shopsWithDistance]);
+  const { data: ratings } = useShopRatingsMap(shopIds);
+
+  const filtered = useMemo(() => {
+    let list = shopsWithDistance.filter((s: any) => {
+      if (cat && s.category !== cat) return false;
+      if (s.distanceKm != null && s.distanceKm > distMax) return false;
+      if (query && !`${s.name}`.toLowerCase().includes(query.toLowerCase())) return false;
+      if (neighborhood && s.neighborhood !== neighborhood) return false;
+      if (openNowOnly && !isOpenNow(s.hours)) return false;
+      if (areaBounds && !areaBounds.contains([s.lat, s.lng])) return false;
+      return true;
+    });
+    list = [...list].sort((a: any, b: any) => {
+      if (a.distanceKm != null && b.distanceKm != null) return a.distanceKm - b.distanceKm;
+      const scoreA = (a.verified ? 10 : 0) + (ratings?.get(a.id)?.avg ?? 0);
+      const scoreB = (b.verified ? 10 : 0) + (ratings?.get(b.id)?.avg ?? 0);
+      return scoreB - scoreA;
+    });
+    return list;
+  }, [shopsWithDistance, cat, distMax, query, neighborhood, openNowOnly, areaBounds, ratings]);
+
+  const neighborhoodOptions = useMemo(() => {
+    const fromShops = new Set(shopsWithDistance.map((s: any) => s.neighborhood).filter(Boolean));
+    return fromShops.size ? Array.from(fromShops).sort() : neighborhoodsFor("Yaoundé");
+  }, [shopsWithDistance]);
 
   const handleLocate = async () => {
     if (geoStatus === "granted" && location) {
@@ -126,7 +179,7 @@ export default function CartePage() {
   return (
     <AppShell hideTopBar>
       <div className="relative h-[calc(100vh-4rem)] overflow-hidden">
-        {mounted && !isLoading ? (
+        {view === "map" && (mounted && !isLoading ? (
           <Suspense fallback={<MapSkeleton />}>
             <MapView
               shops={filtered}
@@ -140,11 +193,15 @@ export default function CartePage() {
               focus={focus}
               countryCenter={countryCenter}
               onMapClick={() => setSelected(null)}
+              onAreaChange={setPendingBounds}
+              route={routeData?.coordinates}
+              routeApproximate={routeData?.approximate}
             />
           </Suspense>
         ) : (
           <MapSkeleton />
-        )}
+        ))}
+        {view === "list" && <ShopListView shops={filtered} />}
 
         <div className="pointer-events-none absolute inset-x-0 top-0 z-[350] h-40 bg-gradient-to-b from-background/85 via-background/40 to-transparent" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[350] h-32 bg-gradient-to-t from-background/70 to-transparent" />
@@ -187,9 +244,49 @@ export default function CartePage() {
                 ))}
               </select>
             </FilterChip>
+            <FilterChip active={neighborhood !== null}>
+              <MapPin size={13} />
+              <select value={neighborhood ?? ""} onChange={(e) => setNeighborhood(e.target.value || null)} className="bg-transparent text-xs font-semibold outline-none">
+                <option value="">{t("carte_allNeighborhoods")}</option>
+                {neighborhoodOptions.map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            </FilterChip>
+            <button
+              onClick={() => setOpenNowOnly((v) => !v)}
+              className={cn(
+                "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold shadow-sm backdrop-blur transition-all",
+                openNowOnly ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card/95 text-foreground",
+              )}
+            >
+              <Clock size={13} /> {t("carte_openNow")}
+            </button>
           </div>
         </div>
 
+        <div className="pointer-events-none absolute right-3 top-[6.5rem] z-[400]">
+          <button
+            onClick={() => setView((v) => (v === "map" ? "list" : "map"))}
+            className="pointer-events-auto flex items-center gap-1.5 rounded-full border border-border bg-card/95 px-3 py-1.5 text-xs font-semibold shadow-lg backdrop-blur"
+          >
+            {view === "map" ? <><List size={13} /> {t("carte_listView")}</> : <><MapIcon size={13} /> {t("carte_mapView")}</>}
+          </button>
+        </div>
+
+        {view === "map" && areaDirty && (
+          <div className="pointer-events-none absolute inset-x-0 top-[9.5rem] z-[400] flex justify-center">
+            <button
+              onClick={() => { setAreaBounds(pendingBounds); setPendingBounds(null); }}
+              className="pointer-events-auto flex items-center gap-1.5 rounded-full gold-gradient px-4 py-2 text-xs font-bold shadow-xl"
+            >
+              <RefreshCw size={13} /> {t("carte_searchThisArea")}
+            </button>
+          </div>
+        )}
+
+        {view === "map" && (
+        <>
         <button
           onClick={handleLocate}
           aria-label={t("carte_locate")}
@@ -237,7 +334,19 @@ export default function CartePage() {
         {selected && !routeFor && (
           <ShopSheet shop={selected} onClose={() => setSelected(null)} onRoute={(s) => setRouteFor(s)} userLocation={location} />
         )}
-        {routeFor && <RouteSheet shop={routeFor} userLocation={location} onClose={() => setRouteFor(null)} />}
+        {routeFor && (
+          <RouteSheet
+            shop={routeFor}
+            userLocation={location}
+            routeData={routeData}
+            routeLoading={routeLoading}
+            routeProfile={routeProfile}
+            onProfileChange={setRouteProfile}
+            onClose={() => { setRouteFor(null); setRouteData(null); }}
+          />
+        )}
+        </>
+        )}
 
         {showLocateSheet && (
           <div
@@ -277,6 +386,58 @@ export default function CartePage() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+function ShopListView({ shops }: { shops: any[] }) {
+  const { t } = useApp();
+  const shopIds = useMemo(() => shops.map((s) => s.id), [shops]);
+  const { data: ratings } = useShopRatingsMap(shopIds);
+
+  if (shops.length === 0) {
+    return (
+      <div className="grid h-full place-items-center p-6 text-center text-sm text-muted-foreground">
+        {t("carte_noResults")}
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full overflow-y-auto pb-24 pt-36">
+      <div className="space-y-2 px-3">
+        {shops.map((s: any) => {
+          const r = ratings?.get(s.id);
+          const open = isOpenNow(s.hours);
+          return (
+            <Link key={s.id} to={`/boutique/${s.id}`} className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3">
+              <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl bg-accent text-2xl">
+                {s.logo_url ? <img src={s.logo_url} alt="" className="h-full w-full object-cover" /> : "🏪"}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate text-sm font-bold">{s.name}</span>
+                  {s.verified && <VerifiedBadge />}
+                </div>
+                <p className="truncate text-xs text-muted-foreground">{s.neighborhood ?? s.category}</p>
+                <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+                  {r && (
+                    <span className="flex items-center gap-0.5 text-foreground">
+                      <Star size={11} className="fill-primary text-primary" /> {r.avg} ({r.count})
+                    </span>
+                  )}
+                  {s.distanceKm != null && <span>{s.distanceKm.toFixed(1)} km</span>}
+                  {open !== null && (
+                    <span className={open ? "text-[color:var(--verified)]" : "text-destructive"}>
+                      {open ? t("carte_openNow") : t("carte_closedNow")}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -421,17 +582,107 @@ function ShopSheet({
   );
 }
 
-function RouteSheet({ shop, userLocation, onClose }: { shop: any; userLocation: GeoPoint | null; onClose: () => void }) {
-  useEffect(() => {
-    // Ouvre un vrai calcul d'itinéraire dans Google Maps (nouvel onglet),
-    // avec la position réelle de l'utilisateur comme origine si disponible.
-    const dest = `${shop.lat},${shop.lng}`;
-    const url = userLocation
-      ? `https://www.google.com/maps/dir/?api=1&origin=${userLocation.lat},${userLocation.lng}&destination=${dest}`
-      : `https://www.google.com/maps/dir/?api=1&destination=${dest}`;
-    window.open(url, "_blank", "noopener,noreferrer");
-    onClose();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  return null;
+function RouteSheet({
+  shop,
+  userLocation,
+  routeData,
+  routeLoading,
+  routeProfile,
+  onProfileChange,
+  onClose,
+}: {
+  shop: any;
+  userLocation: GeoPoint | null;
+  routeData: RouteResult | ApproximateRoute | null;
+  routeLoading: boolean;
+  routeProfile: "foot" | "driving";
+  onProfileChange: (p: "foot" | "driving") => void;
+  onClose: () => void;
+}) {
+  const { t } = useApp();
+  const [expanded, setExpanded] = useState(false);
+
+  if (!userLocation) {
+    return (
+      <div className="absolute inset-x-0 bottom-0 z-[500] rounded-t-3xl border-t border-border bg-card p-5 shadow-2xl">
+        <p className="text-sm text-muted-foreground">{t("carte_routeNeedsLocation")}</p>
+        <button onClick={onClose} className="mt-3 w-full rounded-xl border border-border py-2.5 text-sm font-semibold">
+          {t("common_close")}
+        </button>
+      </div>
+    );
+  }
+
+  const km = routeData ? (routeData.distanceM / 1000).toFixed(routeData.distanceM < 1000 ? 0 : 1) : null;
+  const mins = routeData && routeData.durationS != null ? Math.round(routeData.durationS / 60) : null;
+
+  return (
+    <div className="absolute inset-x-0 bottom-0 z-[500] max-h-[70vh] overflow-y-auto rounded-t-3xl border-t border-border bg-card shadow-2xl">
+      <div className="sticky top-0 flex items-center gap-2 border-b border-border bg-card p-4">
+        <div className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-xl bg-accent">
+          {shop.logo_url ? <img src={shop.logo_url} alt="" className="h-full w-full object-cover" /> : "🏪"}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-bold">{shop.name}</p>
+          {routeData ? (
+            <p className="text-xs text-muted-foreground">
+              {routeData.distanceM < 1000 ? `${Math.round(routeData.distanceM)} m` : `${km} km`}
+              {mins != null && ` • ${mins} min`}
+              {routeData.approximate && ` • ${t("carte_routeApproximate")}`}
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">{routeLoading ? t("carte_routeCalculating") : ""}</p>
+          )}
+        </div>
+        <button onClick={onClose} aria-label={t("common_close")} className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent">
+          <X size={16} />
+        </button>
+      </div>
+
+      <div className="flex gap-2 p-3">
+        <button
+          onClick={() => onProfileChange("foot")}
+          className={cn("flex-1 rounded-xl border py-2 text-xs font-bold", routeProfile === "foot" ? "border-primary bg-primary/15 text-primary" : "border-border text-muted-foreground")}
+        >
+          🚶 {t("carte_profileWalk")}
+        </button>
+        <button
+          onClick={() => onProfileChange("driving")}
+          className={cn("flex-1 rounded-xl border py-2 text-xs font-bold", routeProfile === "driving" ? "border-primary bg-primary/15 text-primary" : "border-border text-muted-foreground")}
+        >
+          🚗 {t("carte_profileDrive")}
+        </button>
+      </div>
+
+      {routeLoading && (
+        <div className="flex items-center justify-center gap-2 p-6 text-sm text-muted-foreground">
+          <Loader2 size={16} className="animate-spin" /> {t("carte_routeCalculating")}
+        </div>
+      )}
+
+      {routeData?.approximate && !routeLoading && (
+        <p className="mx-3 mb-2 rounded-xl bg-accent p-3 text-xs text-muted-foreground">{t("carte_routeApproximateHint")}</p>
+      )}
+
+      {routeData && !routeData.approximate && routeData.steps.length > 0 && !routeLoading && (
+        <div className="px-3 pb-4">
+          <button onClick={() => setExpanded((v) => !v)} className="mb-2 flex w-full items-center justify-between text-xs font-semibold text-muted-foreground">
+            {t("carte_routeSteps")}
+            <ChevronDown size={14} className={cn("transition-transform", expanded && "rotate-180")} />
+          </button>
+          {expanded && (
+            <ol className="space-y-2.5">
+              {routeData.steps.map((s, i) => (
+                <li key={i} className="flex items-start gap-2.5 text-sm">
+                  <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary/15 text-[10px] font-bold text-primary">{i + 1}</span>
+                  <span className="flex-1">{s.instruction}</span>
+                  {s.distanceM > 0 && <span className="shrink-0 text-xs text-muted-foreground">{s.distanceM < 1000 ? `${Math.round(s.distanceM)} m` : `${(s.distanceM / 1000).toFixed(1)} km`}</span>}
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }

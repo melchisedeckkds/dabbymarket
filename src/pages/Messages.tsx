@@ -204,14 +204,9 @@ function Conversation({ id }: { id: string }) {
               <div key={m.id} className={mine ? "flex justify-end" : "flex justify-start"}>
                 <div className={mine ? "max-w-[75%] rounded-2xl rounded-br-md bg-primary px-3 py-2 text-sm text-primary-foreground" : "max-w-[75%] rounded-2xl rounded-bl-md bg-card px-3 py-2 text-sm"}>
                   {m.shared_lat != null ? (
-                    <a
-                      href={`https://www.google.com/maps?q=${m.shared_lat},${m.shared_lng}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 underline"
-                    >
+                    <Link to={`/carte?lat=${m.shared_lat}&lng=${m.shared_lng}`} className="inline-flex items-center gap-1.5 underline">
                       <MapPin size={14} /> {t("messages_locationShared")}
-                    </a>
+                    </Link>
                   ) : (
                     m.text
                   )}
