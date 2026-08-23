@@ -4,8 +4,10 @@ import { ArrowLeft, Heart, Bookmark, Zap, Share2, MessageCircle, BadgeCheck, Sta
 import { toast } from "sonner";
 import {
   useProduct, useLikes, useToggleLike, useWishlist, useToggleWishlist,
-  useBoostProduct, useReviews, useStartConversation, useRecordView, useViewsCount,
+  useReviews, useStartConversation, useRecordView, useViewsCount, useActiveBoosts,
 } from "@/lib/queries";
+import { BoostPicker } from "@/components/boost-picker";
+import { SponsoredBadge } from "@/components/sponsored-badge";
 import { useAuth } from "@/lib/auth";
 import { ConditionBadge, VerifiedBadge } from "@/components/product-card";
 import { ProductDetailSkeleton } from "@/components/skeletons";
@@ -18,8 +20,6 @@ import { SidebarNav } from "@/components/sidebar-nav";
 import { Pepite } from "@/components/pepite";
 import { useApp } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
-
-const BOOST_COST = 80;
 
 function formatXAF(n: number) {
   return `${n.toLocaleString("fr-FR")} FCFA`;
@@ -37,7 +37,8 @@ export default function ProduitPage() {
   const { data: reviews = [] } = useReviews(shop?.id);
   const toggleLike = useToggleLike();
   const toggleWishlist = useToggleWishlist();
-  const boostProduct = useBoostProduct();
+  const { data: activeBoosts = [] } = useActiveBoosts("product", id);
+  const [showBoostPicker, setShowBoostPicker] = useState(false);
   const startConversation = useStartConversation();
   useRecordView("product", id);
   const { data: viewsCount = 0 } = useViewsCount("product", id);
@@ -59,19 +60,12 @@ export default function ProduitPage() {
 
   const liked = !!session && likesData.some((l: any) => l.user_id === session.user.id);
   const saved = !!wishlistData.find((w: any) => w.product_id === product.id);
-  const isBoosted = !!product.boosted_until && new Date(product.boosted_until).getTime() > Date.now();
+  const isBoosted = activeBoosts.length > 0;
   const shopReviews = reviews.slice(0, 2);
 
-  async function handleBoost() {
+  function handleBoost() {
     if (!session) return setShowGuestPrompt(true);
-    if (isBoosted) return toast.success(t("produit_alreadyBoosted"));
-    try {
-      await boostProduct.mutateAsync(product!.id);
-      hapticSuccess();
-      toast.success(t("produit_boostSuccess"), { description: t("produit_boostSuccessDesc") });
-    } catch (e: any) {
-      toast.error(t("produit_insufficientPepites"), { description: `${BOOST_COST} ${t("pepites")} (${profile?.pepites_balance ?? 0})` });
-    }
+    setShowBoostPicker(true);
   }
 
   function handleLike() {
@@ -122,11 +116,7 @@ export default function ProduitPage() {
           <Bookmark size={18} fill={saved ? "currentColor" : "none"} />
         </button>
         {product.images?.[imgIndex] && <img src={product.images[imgIndex]} alt={product.name} className="h-full w-full object-cover" />}
-        {isBoosted && (
-          <span className="absolute bottom-3 left-3 inline-flex items-center gap-1 rounded-full gold-gradient shine px-2.5 py-1 text-[11px] font-bold shadow-lg">
-            <Zap size={12} /> {t("produit_boosted24h")}
-          </span>
-        )}
+        {isBoosted && <SponsoredBadge className="absolute bottom-3 left-3 shadow-lg" />}
         {product.images && product.images.length > 1 && (
           <div className="absolute bottom-3 right-3 flex gap-1">
             {product.images.map((_: string, i: number) => (
@@ -221,9 +211,9 @@ export default function ProduitPage() {
             <RecapTile
               active={isBoosted}
               icon={Zap}
-              activeLabel={t("produit_boosted24h")}
+              activeLabel={t("boost_active")}
               idleLabel={t("produit_notBoosted")}
-              hint={isBoosted ? `-${BOOST_COST} ${t("pepites")}` : `${t("produit_costWord")} ${BOOST_COST} ${t("pepites")}`}
+              hint={isBoosted ? t("boost_active") : t("boost_seeOptions")}
             />
           </div>
         </section>
@@ -279,14 +269,13 @@ export default function ProduitPage() {
           </button>
           <button
             onClick={handleBoost}
-            disabled={boostProduct.isPending}
             className={cn(
               "flex flex-col items-center gap-0.5 rounded-xl py-2.5 text-[11px] font-bold transition-all shadow-lg shadow-primary/20",
               isBoosted ? "bg-accent text-foreground" : "gold-gradient shine",
             )}
           >
             <Zap size={18} />
-            {isBoosted ? t("produit_boosted24h") : `${t("produit_boost")} (${BOOST_COST})`}
+            {isBoosted ? t("boost_active") : t("produit_boost")}
           </button>
         </div>
         <div className="mt-2 grid grid-cols-2 gap-2">
@@ -301,6 +290,7 @@ export default function ProduitPage() {
 
       <div className="lg:hidden"><BottomNav /></div>
       <GuestPrompt open={showGuestPrompt} onClose={() => setShowGuestPrompt(false)} />
+      <BoostPicker open={showBoostPicker} onClose={() => setShowBoostPicker(false)} targetType="product" targetId={product.id} />
       </div>
     </div>
   );

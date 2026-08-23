@@ -26,7 +26,11 @@ import {
   useAdminDeleteProduct,
   usePosts,
   useProducts,
+  useAppConfig,
+  usePepitePacks,
+  useBoostCatalog,
 } from "@/lib/queries";
+import { useQueryClient, useMutation as useMutationRQ } from "@tanstack/react-query";
 import { useApp } from "@/lib/app-store";
 import {
   ArrowLeft,
@@ -107,7 +111,7 @@ function useAdminMetrics() {
   });
 }
 
-type AdminTab = "overview" | "moderation" | "shops" | "accounts" | "content";
+type AdminTab = "overview" | "moderation" | "shops" | "accounts" | "content" | "economy";
 
 export default function AdminPage() {
   const { profile } = useAuth();
@@ -180,12 +184,14 @@ export default function AdminPage() {
         <TabButton active={tab === "shops"} onClick={() => setTab("shops")} icon={Store} label={t("admin_tabShops")} />
         <TabButton active={tab === "accounts"} onClick={() => setTab("accounts")} icon={Users} label={t("admin_tabAccounts")} />
         <TabButton active={tab === "content"} onClick={() => setTab("content")} icon={FileText} label={t("admin_tabContent")} />
+        <TabButton active={tab === "economy"} onClick={() => setTab("economy")} icon={Coins} label={t("admin_tabEconomy")} />
       </div>
 
       {tab === "moderation" && <ModerationTab reports={reports} />}
       {tab === "shops" && <ShopsTab />}
       {tab === "accounts" && <AccountsTab />}
       {tab === "content" && <ContentTab />}
+      {tab === "economy" && <EconomyTab />}
 
       {tab === "overview" && (
       <div className="space-y-4 p-4">
@@ -723,6 +729,156 @@ function ContentTab() {
         onOpenChange={(v) => !v && setConfirm(null)}
         onConfirm={handleDelete}
       />
+    </div>
+  );
+}
+
+// =========================================================
+// ONGLET ÉCONOMIE — quota gratuit, packs, catalogue de boosts
+// (Modèle 1) : tout modifiable sans déploiement de code.
+// =========================================================
+function EconomyTab() {
+  const { t } = useApp();
+  const qc = useQueryClient();
+  const { data: config } = useAppConfig();
+  const { data: packs = [] } = usePepitePacks();
+  const { data: catalog = [] } = useBoostCatalog();
+
+  const updateConfig = useMutationRQ({
+    mutationFn: async (input: { key: string; value: number }) => {
+      const { error } = await supabase.rpc("admin_update_config", { p_key: input.key, p_value: input.value });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["app-config"] }),
+  });
+
+  const updatePack = useMutationRQ({
+    mutationFn: async (input: { id: string; pepites: number; price_fcfa: number; active: boolean }) => {
+      const { error } = await supabase.rpc("admin_update_pack", { p_id: input.id, p_pepites: input.pepites, p_price_fcfa: input.price_fcfa, p_active: input.active });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pepite-packs"] }),
+  });
+
+  const updateBoost = useMutationRQ({
+    mutationFn: async (input: { id: string; cost_pepites: number; active: boolean }) => {
+      const { error } = await supabase.rpc("admin_update_boost_price", { p_id: input.id, p_cost_pepites: input.cost_pepites, p_active: input.active });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["boost-catalog"] }),
+  });
+
+  const [editedConfig, setEditedConfig] = useState<Record<string, string>>({});
+  const [editedPacks, setEditedPacks] = useState<Record<string, { pepites: string; price_fcfa: string }>>({});
+  const [editedBoosts, setEditedBoosts] = useState<Record<string, string>>({});
+
+  const configLabels: Record<string, string> = {
+    free_active_listings_quota: t("admin_cfgQuota"),
+    quota_overage_price_pepites: t("admin_cfgOveragePrice"),
+    welcome_bonus_amount: t("admin_cfgBonusAmount"),
+    welcome_bonus_expiry_days: t("admin_cfgBonusExpiry"),
+    max_shops_per_phone: t("admin_cfgMaxShopsPerPhone"),
+    max_accounts_per_device_24h: t("admin_cfgMaxAccountsPerDevice"),
+    home_featured_slots_per_day: t("admin_cfgHomeSlots"),
+    boost_rank_bonus_cap: t("admin_cfgRankCap"),
+  };
+
+  return (
+    <div className="space-y-5 p-4">
+      <section>
+        <h2 className="mb-2 text-sm font-semibold">{t("admin_cfgTitle")}</h2>
+        <div className="space-y-2">
+          {config &&
+            Object.entries(config).map(([key, value]) => (
+              <div key={key} className="flex items-center gap-2 rounded-xl border border-border bg-card p-2.5">
+                <span className="flex-1 text-xs text-muted-foreground">{configLabels[key] ?? key}</span>
+                <input
+                  type="number"
+                  defaultValue={String(value)}
+                  onChange={(e) => setEditedConfig((s) => ({ ...s, [key]: e.target.value }))}
+                  className="w-20 rounded-lg border border-border bg-background px-2 py-1 text-right text-xs"
+                />
+                <button
+                  onClick={() => updateConfig.mutate({ key, value: Number(editedConfig[key] ?? value) })}
+                  className="rounded-lg bg-primary px-2.5 py-1 text-[11px] font-bold text-primary-foreground"
+                >
+                  {t("common_save")}
+                </button>
+              </div>
+            ))}
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-2 text-sm font-semibold">{t("admin_cfgPacks")}</h2>
+        <div className="space-y-2">
+          {packs.map((p: any) => {
+            const edited = editedPacks[p.id] ?? { pepites: String(p.pepites), price_fcfa: String(p.price_fcfa) };
+            return (
+              <div key={p.id} className="rounded-xl border border-border bg-card p-2.5">
+                <div className="mb-1.5 flex items-center justify-between text-xs font-bold">
+                  {p.label}
+                  <span className={p.active ? "text-[color:var(--verified)]" : "text-muted-foreground"}>{p.active ? t("admin_active") : t("admin_inactive")}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    value={edited.pepites}
+                    onChange={(e) => setEditedPacks((s) => ({ ...s, [p.id]: { ...edited, pepites: e.target.value } }))}
+                    className="w-20 rounded-lg border border-border bg-background px-2 py-1 text-xs"
+                  />
+                  <span className="text-[10px] text-muted-foreground">{t("pepites")}</span>
+                  <span className="text-muted-foreground">=</span>
+                  <input
+                    type="number"
+                    value={edited.price_fcfa}
+                    onChange={(e) => setEditedPacks((s) => ({ ...s, [p.id]: { ...edited, price_fcfa: e.target.value } }))}
+                    className="w-24 rounded-lg border border-border bg-background px-2 py-1 text-xs"
+                  />
+                  <span className="text-[10px] text-muted-foreground">FCFA</span>
+                  <button
+                    onClick={() => updatePack.mutate({ id: p.id, pepites: Number(edited.pepites), price_fcfa: Number(edited.price_fcfa), active: p.active })}
+                    className="ml-auto rounded-lg bg-primary px-2.5 py-1 text-[11px] font-bold text-primary-foreground"
+                  >
+                    {t("common_save")}
+                  </button>
+                  <button
+                    onClick={() => updatePack.mutate({ id: p.id, pepites: p.pepites, price_fcfa: p.price_fcfa, active: !p.active })}
+                    className="rounded-lg border border-border px-2 py-1 text-[11px] font-semibold"
+                  >
+                    {p.active ? t("admin_deactivate") : t("admin_activate")}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-2 text-sm font-semibold">{t("admin_cfgBoosts")}</h2>
+        <div className="space-y-1.5">
+          {catalog.map((b: any) => (
+            <div key={b.id} className="flex items-center gap-2 rounded-xl border border-border bg-card p-2.5">
+              <span className="flex-1 truncate text-xs">{b.label}</span>
+              <input
+                type="number"
+                defaultValue={b.cost_pepites}
+                onChange={(e) => setEditedBoosts((s) => ({ ...s, [b.id]: e.target.value }))}
+                className="w-16 rounded-lg border border-border bg-background px-2 py-1 text-right text-xs"
+              />
+              <span className="text-[10px] text-muted-foreground">{t("pepites")}</span>
+              <button
+                onClick={() => updateBoost.mutate({ id: b.id, cost_pepites: Number(editedBoosts[b.id] ?? b.cost_pepites), active: b.active })}
+                className="rounded-lg bg-primary px-2.5 py-1 text-[11px] font-bold text-primary-foreground"
+              >
+                {t("common_save")}
+              </button>
+            </div>
+          ))}
+        </div>
+        <p className="mt-2 text-[11px] text-muted-foreground">{t("admin_cfgBoostsHint")}</p>
+      </section>
     </div>
   );
 }

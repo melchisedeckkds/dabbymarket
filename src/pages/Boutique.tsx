@@ -1,14 +1,16 @@
 import { Link, useParams, useNavigate } from "react-router-dom";
-import { Star, MapPin, ArrowLeft, MessageCircle, Store, Loader2, Eye, Compass, Clock as ClockIcon } from "lucide-react";
+import { Star, MapPin, ArrowLeft, MessageCircle, Store, Loader2, Eye, Compass, Clock as ClockIcon, Zap } from "lucide-react";
 import { useState } from "react";
 import { VerifiedBadge, ConditionBadge } from "@/components/product-card";
 import { ShopHeaderSkeleton } from "@/components/skeletons";
 import { GuestPrompt } from "@/components/guest-prompt";
+import { BoostPicker } from "@/components/boost-picker";
+import { SponsoredBadge } from "@/components/sponsored-badge";
 import { BottomNav } from "@/components/bottom-nav";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { useAuth } from "@/lib/auth";
 import { useApp } from "@/lib/app-store";
-import { useShop, useShops, useProducts, useReviews, useStartConversation, useRecordView, useViewsCount } from "@/lib/queries";
+import { useShop, useShops, useProducts, useReviews, useStartConversation, useRecordView, useViewsCount, useActiveBoosts } from "@/lib/queries";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -70,6 +72,8 @@ export default function BoutiquePage() {
   const { data: viewsCount = 0 } = useViewsCount("shop", id);
   const [tab, setTab] = useState<"produits" | "avis" | "apropos" | "loc">("produits");
   const [showGuestPrompt, setShowGuestPrompt] = useState(false);
+  const [showBoostPicker, setShowBoostPicker] = useState(false);
+  const { data: activeShopBoosts = [] } = useActiveBoosts("shop", id);
 
   if (isLoading) {
     return <ShopHeaderSkeleton />;
@@ -128,6 +132,7 @@ export default function BoutiquePage() {
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="truncate text-lg font-bold">{shop.name}</h1>
               {shop.verified && <VerifiedBadge />}
+              {activeShopBoosts.length > 0 && <SponsoredBadge />}
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               {avgRating && (
@@ -306,6 +311,14 @@ export default function BoutiquePage() {
       </div>
 
       <div className="fixed inset-x-0 bottom-16 z-30 mx-auto max-w-md border-t border-border bg-background/95 p-3 backdrop-blur lg:bottom-0 lg:max-w-2xl">
+        {session?.user?.id === shop.owner_id ? (
+          <button
+            onClick={() => setShowBoostPicker(true)}
+            className="flex w-full items-center justify-center gap-2 rounded-xl gold-gradient shine py-3 text-sm font-bold"
+          >
+            <Zap size={16} /> {activeShopBoosts.length > 0 ? t("boost_active") : t("boutique_boostMine")}
+          </button>
+        ) : (
         <div className="grid grid-cols-2 gap-2">
           <button onClick={handleContact} className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground">
             <MessageCircle size={16} /> {t("boutique_contact")}
@@ -320,10 +333,12 @@ export default function BoutiquePage() {
             <Store size={16} /> {following ? t("boutique_following") : t("boutique_follow")}
           </button>
         </div>
+        )}
       </div>
 
       <div className="lg:hidden"><BottomNav /></div>
       <GuestPrompt open={showGuestPrompt} onClose={() => setShowGuestPrompt(false)} />
+      <BoostPicker open={showBoostPicker} onClose={() => setShowBoostPicker(false)} targetType="shop" targetId={shop.id} />
       </div>
     </div>
   );
