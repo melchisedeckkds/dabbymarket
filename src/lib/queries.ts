@@ -148,9 +148,109 @@ export function useProduct(id: string | undefined) {
   });
 }
 
-const PUBLISH_COST = 15;
-const BOOST_PRODUCT_COST = 80;
-const BOOST_SHOP_COST = 120;
+// ============ MODÈLE ÉCONOMIQUE v1 — config, packs, boosts ============
+// Gratuit pour être découvert (création boutique, publication, quota
+// d'articles actifs), payant uniquement pour la mise en avant (boosts).
+
+export function useAppConfig() {
+  return useQuery({
+    queryKey: ["app-config"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("app_config").select("*");
+      if (error) throw error;
+      const map: Record<string, any> = {};
+      (data ?? []).forEach((r: any) => (map[r.key] = r.value));
+      return map;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function usePepitePacks() {
+  return useQuery({
+    queryKey: ["pepite-packs"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("pepite_packs").select("*").eq("active", true).order("sort_order");
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+export function useBoostCatalog() {
+  return useQuery({
+    queryKey: ["boost-catalog"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("boost_catalog").select("*").eq("active", true).order("sort_order");
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+// Boosts actuellement actifs pour une cible précise (affichage du/des
+// badge(s) "sponsorisé" sur sa fiche, cumul de plusieurs types possible).
+export function useActiveBoosts(targetType: "product" | "shop", targetId: string | undefined) {
+  return useQuery({
+    queryKey: ["active-boosts", targetType, targetId],
+    enabled: !!targetId,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("active_boosts").select("*").eq("target_type", targetType).eq("target_id", targetId!);
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+export function usePurchaseBoost() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { targetType: "product" | "shop"; targetId: string; boostCatalogId: string }) => {
+      const { data, error } = await supabase.rpc("purchase_boost", {
+        p_target_type: input.targetType,
+        p_target_id: input.targetId,
+        p_boost_catalog_id: input.boostCatalogId,
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["active-boosts", vars.targetType, vars.targetId] });
+      qc.invalidateQueries({ queryKey: ["products"] });
+      qc.invalidateQueries({ queryKey: ["shops"] });
+      qc.invalidateQueries({ queryKey: ["my-profile"] });
+    },
+  });
+}
+
+export function usePurchaseHomeFeature() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { targetType: "product" | "shop"; targetId: string }) => {
+      const { data, error } = await supabase.rpc("purchase_home_feature", {
+        p_target_type: input.targetType,
+        p_target_id: input.targetId,
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["my-profile"] }),
+  });
+}
+
+// Nombre d'articles actifs d'une boutique, pour afficher clairement où
+// elle se situe par rapport au quota gratuit (ex. "4/3 — 1 article payant").
+export function useShopActiveListingCount(shopId: string | undefined) {
+  return useQuery({
+    queryKey: ["shop-active-listing-count", shopId],
+    enabled: !!shopId,
+    queryFn: async () => {
+      const { count, error } = await supabase.from("products").select("*", { count: "exact", head: true }).eq("shop_id", shopId!).eq("is_active", true);
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+}
 
 export function usePublishProduct() {
   const qc = useQueryClient();
@@ -164,53 +264,37 @@ export function usePublishProduct() {
       condition: "Neuf" | "Occasion";
       images: string[];
     }) => {
-      // 1) débiter les Pépites via la fonction RPC sécurisée
-      const { error: spendError } = await supabase.rpc("spend_pepites", {
-        p_amount: PUBLISH_COST,
-        p_type: "publish",
-      });
-      if (spendError) throw spendError;
-      // 2) créer le produit
+      // Publier un article est gratuit dans la limite du quota (Modèle 1) ;
+      // au-delà, la facturation récurrente (10 Pépites/mois par article
+      // supplémentaire) est prélevée par une tâche planifiée mensuelle, pas
+      // à la publication — voir bill_quota_overage() côté base de données.
       const { data, error } = await supabase.from("products").insert(input).select().single();
       if (error) throw error;
+      // Verse le bonus de bienvenue si c'est le 1er article avec photo de
+      // ce vendeur ; ne bloque jamais la publication si cet appel échoue.
+      supabase.rpc("grant_welcome_bonus_if_eligible", { p_product_id: data.id }).then(({ error: bonusError }) => {
+        if (bonusError) console.error("grant_welcome_bonus_if_eligible:", bonusError);
+      });
       return data;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["products"] });
       qc.invalidateQueries({ queryKey: ["my-profile"] });
+      qc.invalidateQueries({ queryKey: ["shop-active-listing-count"] });
     },
   });
 }
 
+/** @deprecated Remplacé par usePurchaseBoost({ targetType:"product", boostCatalogId:"article_24h"|"article_48h"|"article_7d" }). Conservé pour compatibilité ascendante immédiate de l'UI existante — achète le Boost Article 24h. */
 export function useBoostProduct() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (productId: string) => {
-      const { error: spendError } = await supabase.rpc("spend_pepites", {
-        p_amount: BOOST_PRODUCT_COST,
-        p_type: "boost_product",
-      });
-      if (spendError) throw spendError;
-      const until = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-      const { error } = await supabase.from("products").update({ boosted_until: until }).eq("id", productId);
-      if (error) throw error;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["products"] }),
-  });
+  const purchase = usePurchaseBoost();
+  return { ...purchase, mutateAsync: (productId: string) => purchase.mutateAsync({ targetType: "product", targetId: productId, boostCatalogId: "article_24h" }) };
 }
 
+/** @deprecated Remplacé par usePurchaseBoost({ targetType:"shop", boostCatalogId:"shop_3d"|"shop_7d"|"shop_30d" }). Conservé pour compatibilité ascendante immédiate de l'UI existante — achète le Boost Boutique 3 jours. */
 export function useBoostShop() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (_shopId: string) => {
-      const { error } = await supabase.rpc("spend_pepites", {
-        p_amount: BOOST_SHOP_COST,
-        p_type: "boost_shop",
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["shops"] }),
-  });
+  const purchase = usePurchaseBoost();
+  return { ...purchase, mutateAsync: (shopId: string) => purchase.mutateAsync({ targetType: "shop", targetId: shopId, boostCatalogId: "shop_3d" }) };
 }
 
 // ============ POSTS (feed) ============
