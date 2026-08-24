@@ -11,7 +11,8 @@ import { CATEGORIES } from "@/lib/categories";
 import { neighborhoodsFor } from "@/lib/neighborhoods";
 import { isOpenNow } from "@/lib/hours";
 import { useAuth } from "@/lib/auth";
-import { useShops, useProducts, useReviews, useStartConversation, useSendMessage, useShopRatingsMap } from "@/lib/queries";
+import { useShops, useProducts, useReviews, useStartConversation, useSendMessage, useShopRatingsMap, useActiveBoostIds, useAppConfig, applyRankCap } from "@/lib/queries";
+import { SponsoredBadge } from "@/components/sponsored-badge";
 import { cn } from "@/lib/utils";
 import { useEscapeToClose } from "@/hooks/use-escape-to-close";
 import { COUNTRY_CODES, getCountryFromPhone } from "@/lib/country-codes";
@@ -131,6 +132,9 @@ export default function CartePage() {
 
   const shopIds = useMemo(() => shopsWithDistance.map((s: any) => s.id), [shopsWithDistance]);
   const { data: ratings } = useShopRatingsMap(shopIds);
+  const { data: carteBoostIds = new Set<string>() } = useActiveBoostIds("shop", "carte");
+  const { data: rankCapConfig } = useAppConfig();
+  const rankCap = Number(rankCapConfig?.boost_rank_bonus_cap ?? 3);
 
   const filtered = useMemo(() => {
     let list = shopsWithDistance.filter((s: any) => {
@@ -148,8 +152,11 @@ export default function CartePage() {
       const scoreB = (b.verified ? 10 : 0) + (ratings?.get(b.id)?.avg ?? 0);
       return scoreB - scoreA;
     });
-    return list;
-  }, [shopsWithDistance, cat, distMax, query, neighborhood, openNowOnly, areaBounds, ratings]);
+    // Boost Carte : bonus de rang plafonné, jamais un réordonnancement
+    // libre — une boutique boostée ne peut dépasser une boutique nettement
+    // plus proche/pertinente de plus de `rankCap` places.
+    return applyRankCap(list, carteBoostIds, rankCap);
+  }, [shopsWithDistance, cat, distMax, query, neighborhood, openNowOnly, areaBounds, ratings, carteBoostIds, rankCap]);
 
   const neighborhoodOptions = useMemo(() => {
     const fromShops = new Set(shopsWithDistance.map((s: any) => s.neighborhood).filter(Boolean));
@@ -319,6 +326,7 @@ export default function CartePage() {
                       <div className="flex items-center gap-1">
                         <span className="truncate text-sm font-bold">{s.name}</span>
                         {s.verified && <VerifiedBadge />}
+                        {carteBoostIds.has(s.id) && <SponsoredBadge />}
                       </div>
                       <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                         {s.distanceKm != null && <span>{s.distanceKm.toFixed(1)} km</span>}
@@ -393,6 +401,7 @@ function ShopListView({ shops }: { shops: any[] }) {
   const { t } = useApp();
   const shopIds = useMemo(() => shops.map((s) => s.id), [shops]);
   const { data: ratings } = useShopRatingsMap(shopIds);
+  const { data: carteBoostIds = new Set<string>() } = useActiveBoostIds("shop", "carte");
 
   if (shops.length === 0) {
     return (
@@ -417,6 +426,7 @@ function ShopListView({ shops }: { shops: any[] }) {
                 <div className="flex items-center gap-1.5">
                   <span className="truncate text-sm font-bold">{s.name}</span>
                   {s.verified && <VerifiedBadge />}
+                  {carteBoostIds.has(s.id) && <SponsoredBadge />}
                 </div>
                 <p className="truncate text-xs text-muted-foreground">{s.neighborhood ?? s.category}</p>
                 <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">

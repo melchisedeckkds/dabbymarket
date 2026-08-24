@@ -8,7 +8,7 @@ import { motion } from "framer-motion";
 import { ImageLightbox } from "@/components/image-lightbox";
 import { AppShell } from "@/components/app-shell";
 import { ProductCard } from "@/components/product-card";
-import { useInfiniteProducts, useInfinitePosts, useSinglePost, useToggleLike, useLikes, useComments, useShopRatingsMap } from "@/lib/queries";
+import { useInfiniteProducts, useInfinitePosts, useSinglePost, useToggleLike, useLikes, useComments, useShopRatingsMap, useActiveBoostIds, useAppConfig, applyRankCap } from "@/lib/queries";
 import { CommentSheet } from "@/components/comment-sheet";
 import { GuestPrompt } from "@/components/guest-prompt";
 import { HashtagText } from "@/components/hashtag-text";
@@ -85,14 +85,22 @@ export default function MarchePage() {
     return () => observer.disconnect();
   }, [hasNextProducts, hasNextPosts, fetchingNextProducts, fetchingNextPosts, fetchNextProducts, fetchNextPosts]);
 
+  const { data: rechercheBoostIds = new Set<string>() } = useActiveBoostIds("product", "recherche");
+  const { data: rankCapConfig } = useAppConfig();
+  const rankCap = Number(rankCapConfig?.boost_rank_bonus_cap ?? 3);
+
   const filteredProducts = useMemo(() => {
-    return products.filter((p: any) => {
+    const base = products.filter((p: any) => {
       if (cat && p.category !== cat) return false;
       if (condition !== "all" && p.condition !== condition) return false;
       if (q && !p.name.toLowerCase().includes(q.toLowerCase())) return false;
       return true;
     });
-  }, [products, q, cat, condition]);
+    // Un boost Recherche ne réordonne jamais librement : il ne peut faire
+    // remonter un article que de `rankCap` places au maximum, jamais
+    // dépasser un résultat nettement plus pertinent.
+    return q || cat ? applyRankCap(base, rechercheBoostIds, rankCap) : base;
+  }, [products, q, cat, condition, rechercheBoostIds, rankCap]);
 
   const filteredPosts = useMemo(() => {
     if (cat || condition !== "all") return [];
@@ -195,7 +203,7 @@ export default function MarchePage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2">
             {filteredProducts.map((p: any, i: number) => (
               <motion.div key={p.id} custom={i} initial="hidden" animate="show" variants={fadeUp}>
-                <ProductCard product={p} rating={p.shops ? shopRatings.data?.get(p.shops.id) : undefined} />
+                <ProductCard product={p} rating={p.shops ? shopRatings.data?.get(p.shops.id) : undefined} sponsored={rechercheBoostIds.has(p.id)} />
               </motion.div>
             ))}
             {filteredPosts.map((p: any, i: number) => (

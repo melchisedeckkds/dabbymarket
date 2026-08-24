@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { AppShell } from "@/components/app-shell";
 import { useAuth } from "@/lib/auth";
-import { useRequestRecharge, useMyTransactions } from "@/lib/queries";
+import { useRequestRecharge, useMyTransactions, usePepitePacks, useAppConfig } from "@/lib/queries";
 import { Pepite } from "@/components/pepite";
 import { ArrowLeft, Copy, Smartphone, CheckCircle2, Clock, XCircle, Loader2 } from "lucide-react";
 import { useState } from "react";
@@ -11,13 +11,7 @@ import { useApp } from "@/lib/app-store";
 import { hapticSuccess } from "@/lib/haptics";
 
 const ADMIN_PHONE_DISPLAY = "+237 696 430 723";
-
-const packs = [
-  { pepites: 200, xaf: 1000 },
-  { pepites: 500, xaf: 2500, popular: true },
-  { pepites: 1200, xaf: 5000 },
-  { pepites: 3000, xaf: 12000 },
-];
+const ADMIN_BENEFICIARY_NAME = "Kondjebe Melchisedeck Stanley Daniel";
 
 const methods: { id: "OrangeMoney" | "MTNMoMo"; label: string; color: string }[] = [
   { id: "OrangeMoney", label: "Orange Money", color: "#ff6a00" },
@@ -30,10 +24,20 @@ export default function RechargePage() {
   const locale = lang === "en" ? "en-US" : "fr-FR";
   const requestRecharge = useRequestRecharge();
   const { data: myTransactions = [] } = useMyTransactions();
-  const [pack, setPack] = useState(1);
+  const { data: packs = [] } = usePepitePacks();
+  const { data: config } = useAppConfig();
+  const [pack, setPack] = useState(0);
   const [method, setMethod] = useState<"OrangeMoney" | "MTNMoMo">("OrangeMoney");
   const [txCode, setTxCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // Le pack "populaire" est le pack médian du catalogue (STANDARD),
+  // repéré par sa position plutôt que codé en dur — reste cohérent même
+  // si l'admin ajoute ou retire un pack depuis le panneau Économie.
+  const popularIndex = Math.floor(packs.length / 2);
+  const selected = packs[pack];
+  const quota = config?.free_active_listings_quota ?? 3;
+  const overagePrice = config?.quota_overage_price_pepites ?? 10;
 
   function copyNumber() {
     navigator.clipboard.writeText(ADMIN_PHONE_DISPLAY.replace(/\s/g, ""));
@@ -42,9 +46,10 @@ export default function RechargePage() {
 
   async function submit() {
     if (!txCode.trim()) return toast.error(t("recharge_codeRequired"));
+    if (!selected) return;
     setSubmitting(true);
     try {
-      await requestRecharge.mutateAsync({ amount: packs[pack].pepites, method, reference: txCode.trim() });
+      await requestRecharge.mutateAsync({ amount: selected.pepites, method, reference: txCode.trim() });
       hapticSuccess();
       toast.success(t("recharge_requestSent"), {
         description: t("recharge_requestSentDesc"),
@@ -88,20 +93,21 @@ export default function RechargePage() {
                 <Copy size={16} />
               </button>
             </div>
-            <p className="mt-2 text-[11px] text-muted-foreground">{t("recharge_beneficiary")}</p>
+            <p className="mt-2 text-[11px] text-muted-foreground">{t("recharge_beneficiary")} : {ADMIN_BENEFICIARY_NAME}</p>
           </div>
         </div>
 
         <h2 className="mt-6 mb-2 text-sm font-semibold">{t("recharge_step2Title")}</h2>
         <div className="grid grid-cols-2 gap-2">
-          {packs.map((p, i) => (
-            <button key={i} onClick={() => setPack(i)} className={cn("relative rounded-xl border p-3 text-left transition-colors", pack === i ? "border-primary bg-primary/5" : "border-border bg-card")}>
-              {p.popular && <span className="absolute -top-2 right-2 rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground">{t("recharge_popular")}</span>}
+          {packs.map((p: any, i: number) => (
+            <button key={p.id} onClick={() => setPack(i)} className={cn("relative rounded-xl border p-3 text-left transition-colors", pack === i ? "border-primary bg-primary/5" : "border-border bg-card")}>
+              {i === popularIndex && <span className="absolute -top-2 right-2 rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground">{t("recharge_popular")}</span>}
+              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{p.label}</p>
               <div className="flex items-center gap-1.5">
                 <Pepite size={18} />
                 <span className="text-lg font-bold">{p.pepites}</span>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">{p.xaf.toLocaleString(locale)} FCFA</p>
+              <p className="mt-1 text-xs text-muted-foreground">{p.price_fcfa.toLocaleString(locale)} FCFA</p>
             </button>
           ))}
         </div>
@@ -120,9 +126,9 @@ export default function RechargePage() {
         <input value={txCode} onChange={(e) => setTxCode(e.target.value)} className="input" placeholder={t("recharge_codePlaceholder")} />
         <p className="mt-1 text-[11px] text-muted-foreground">{t("recharge_codeHint")}</p>
 
-        <button onClick={submit} disabled={submitting} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl gold-gradient py-3.5 text-sm font-bold disabled:opacity-60">
+        <button onClick={submit} disabled={submitting || !selected} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl gold-gradient py-3.5 text-sm font-bold disabled:opacity-60">
           {submitting && <Loader2 size={16} className="animate-spin" />}
-          {t("recharge_submit")} — {packs[pack].xaf.toLocaleString(locale)} FCFA
+          {t("recharge_submit")} — {selected ? selected.price_fcfa.toLocaleString(locale) : "…"} FCFA
         </button>
 
         <div className="mt-3 rounded-xl border border-primary/30 bg-primary/5 p-3 text-[11px] text-muted-foreground">
@@ -164,12 +170,13 @@ export default function RechargePage() {
             <li>
               • {t("recharge_costShop")} : <span className="font-bold text-[color:var(--verified)]">{t("common_free")}</span>
             </li>
-            <li>• {t("recharge_costPublish")} : 15 {t("pepites")}</li>
             <li>
-              • {t("recharge_costBoostProduct")} : 80 {t("pepites")} <span className="text-primary">— {t("recharge_boostRecommendedByAI")}</span>
+              • {t("recharge_costPublishFree")} : <span className="font-bold text-[color:var(--verified)]">{t("common_free")}</span> ({t("recharge_costPublishQuota").replace("{n}", String(quota))})
             </li>
-            <li>• {t("recharge_costBoostShop")} : 120 {t("pepites")}</li>
+            <li>• {t("recharge_costPublishOverage").replace("{price}", String(overagePrice))}</li>
+            <li>• {t("recharge_costBoostsIntro")}</li>
           </ul>
+          <p className="mt-2 text-[10px] italic">{t("recharge_boostFairnessNote")}</p>
         </div>
       </div>
 
