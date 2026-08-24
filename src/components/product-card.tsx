@@ -8,6 +8,7 @@ import { shareContent } from "@/lib/share";
 import { useApp } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
 import { GuestPrompt } from "./guest-prompt";
+import { SponsoredBadge } from "./sponsored-badge";
 
 function formatXAF(n: number) {
   return `${n.toLocaleString("fr-FR")} FCFA`;
@@ -23,7 +24,7 @@ type RealProduct = {
   shops: { id: string; name: string; logo_url: string | null; verified: boolean } | null;
 };
 
-export function ProductCard({ product, rating }: { product: RealProduct; rating?: { avg: number; count: number } }) {
+export function ProductCard({ product, rating, sponsored }: { product: RealProduct; rating?: { avg: number; count: number }; sponsored?: boolean }) {
   const { session } = useAuth();
   const { t } = useApp();
   const shop = product.shops;
@@ -34,7 +35,7 @@ export function ProductCard({ product, rating }: { product: RealProduct; rating?
 
   const liked = !!session && likesData.some((l: any) => l.user_id === session.user.id);
   const saved = !!wishlistData.find((w: any) => w.product_id === product.id);
-  const isBoosted = !!product.boosted_until && new Date(product.boosted_until).getTime() > Date.now();
+  const isBoosted = (!!product.boosted_until && new Date(product.boosted_until).getTime() > Date.now()) || !!sponsored;
   const photo = product.images?.[0];
   const [showGuestPrompt, setShowGuestPrompt] = useState(false);
 
@@ -83,11 +84,7 @@ export function ProductCard({ product, rating }: { product: RealProduct; rating?
         ) : (
           <span className="absolute inset-0 grid place-items-center text-4xl text-muted-foreground">🛍️</span>
         )}
-        {isBoosted && (
-          <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full gold-gradient shine px-2 py-0.5 text-[10px] font-bold shadow">
-            <Zap size={11} /> Boosté
-          </span>
-        )}
+        {isBoosted && <SponsoredBadge className="absolute left-2 top-2 shadow" />}
       </Link>
 
       <div className="p-3">

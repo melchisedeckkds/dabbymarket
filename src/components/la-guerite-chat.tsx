@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { ShieldCheck, X, Send, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useShops, useProducts } from "@/lib/queries";
+import { useShops, useProducts, useActiveBoostIds } from "@/lib/queries";
 import { supabase } from "@/lib/supabase";
 import { useApp } from "@/lib/app-store";
 import { useAuth } from "@/lib/auth";
@@ -19,23 +19,28 @@ function formatXAF(n: number) {
   return `${n.toLocaleString("fr-FR")} FCFA`;
 }
 
-function buildSystemPrompt(shops: any[], products: any[], lang: Lang, languageInstruction: string) {
-  const now = Date.now();
-  const boosted = products.filter((p) => p.boosted_until && new Date(p.boosted_until).getTime() > now);
-
+function buildSystemPrompt(
+  shops: any[],
+  products: any[],
+  lang: Lang,
+  languageInstruction: string,
+  iaBoostedShopIds: Set<string>,
+  iaBoostedProductIds: Set<string>,
+) {
   const shopsLine = shops
     .map((s) => {
       const loc = s.shop_type === "no_location" ? "sans emplacement physique" : [s.neighborhood, s.city].filter(Boolean).join(", ") || "emplacement non renseigné";
       const open = isOpenNow(s.hours);
       const openLabel = open === null ? "" : open ? " — ouvert maintenant" : " — fermé actuellement";
-      return `- ${s.name} (${s.category})${s.verified ? " ✓vérifiée" : ""} — ${loc}${openLabel}`;
+      const iaTag = iaBoostedShopIds.has(s.id) ? " [ÉLIGIBLE MENTION SPONSORISÉE]" : "";
+      return `- ${s.name} (${s.category})${s.verified ? " ✓vérifiée" : ""} — ${loc}${openLabel}${iaTag}`;
     })
     .join("\n");
   const productsLine = products
-    .map(
-      (p) =>
-        `- [${p.id}] ${p.name} — ${formatXAF(p.price_xaf)} — ${p.category} — ${p.condition}${boosted.some((b) => b.id === p.id) ? " ⚡boostée" : ""}`,
-    )
+    .map((p) => {
+      const iaTag = iaBoostedProductIds.has(p.id) ? " [ÉLIGIBLE MENTION SPONSORISÉE]" : "";
+      return `- [${p.id}] ${p.name} — ${formatXAF(p.price_xaf)} — ${p.category} — ${p.condition}${iaTag}`;
+    })
     .join("\n");
 
   return `Tu es **La Guérite**, l'assistante officielle et formelle de DabbyMarket, le marché numérique de proximité au Cameroun. Ton nom évoque le poste de garde à l'entrée du marché : tu accueilles, tu orientes, tu inspires confiance.
@@ -43,7 +48,7 @@ function buildSystemPrompt(shops: any[], products: any[], lang: Lang, languageIn
 TON STYLE :
 - Registre formel et professionnel, vouvoiement systématique ("vous", "votre")
 - Ton courtois, posé, précis — pas de familiarité, pas d'expressions argotiques
-- Emojis rares et sobres, utilisés seulement pour clarifier (⚡ pour un boost, ✓ pour vérifié)
+- Emojis rares et sobres, utilisés seulement pour clarifier (✓ pour vérifié)
 - Réponses concises (2-5 phrases sauf demande explicite de détail), formulations complètes et soignées
 - Français standard
 
@@ -54,8 +59,11 @@ TON RÔLE :
 4. Orienter vers les boutiques appropriées selon la catégorie recherchée
 
 HIÉRARCHIE DE RECOMMANDATION — RÈGLE ABSOLUE :
-PERTINENCE (correspond réellement à la demande) > QUALITÉ/CONFIANCE (vérifiée, bien notée) > PROXIMITÉ (quartier demandé) > BOOST.
-Le badge ⚡boostée n'est JAMAIS une raison de recommander un produit qui ne correspond pas à la demande — c'est uniquement un critère de départage entre deux résultats déjà également pertinents. Si l'utilisateur cherche un téléphone, ne mentionnez jamais une boutique de pâtisserie sous prétexte qu'elle est boostée.
+PERTINENCE (correspond réellement à la demande) > QUALITÉ/CONFIANCE (vérifiée, bien notée) > PROXIMITÉ (quartier demandé) > mention sponsorisée.
+Une entrée marquée [ÉLIGIBLE MENTION SPONSORISÉE] a payé pour le droit d'être *mentionnée en complément*, jamais pour être présentée comme la réponse principale ni comme neutre. Vous NE DEVEZ mentionner une entrée éligible QUE si elle correspond déjà réellement à la demande — jamais pour la seule raison qu'elle est éligible. Si l'utilisateur cherche un téléphone, ne mentionnez jamais une boutique de pâtisserie même si elle est éligible.
+
+RÈGLE D'ÉTIQUETAGE — NON NÉGOCIABLE :
+Chaque fois que vous mentionnez une boutique ou un article marqué [ÉLIGIBLE MENTION SPONSORISÉE], vous devez explicitement l'indiquer dans votre réponse (ex. « — boutique mise en avant » ou « (sponsorisé) » accolé au nom). Ne présentez jamais une mention sponsorisée comme une recommandation neutre ou organique. N'ajoutez cette mention à aucune autre entrée.
 
 BASE DE DONNÉES RÉELLE DU MARCHÉ (à l'instant) :
 
@@ -64,8 +72,6 @@ ${shopsLine || "aucune boutique enregistrée pour l'instant"}
 
 PRODUITS (${products.length}) :
 ${productsLine || "aucun produit enregistré pour l'instant"}
-
-PRODUITS ACTUELLEMENT BOOSTÉS : ${boosted.length ? boosted.map((p) => p.name).join(", ") : "aucun pour l'instant"}
 
 Ne mentionnez jamais un produit ou une boutique qui n'apparaît pas dans cette liste. Si l'utilisateur mentionne un quartier ou "près de moi", privilégiez les boutiques dont l'emplacement correspond — vous n'avez pas accès à sa position GPS exacte, seulement au quartier s'il le précise. Si la question sort du cadre du marché, ramenez la conversation avec courtoisie vers l'objet de DabbyMarket.
 
@@ -78,6 +84,8 @@ export function LaGueriteChat() {
   const { session } = useAuth();
   const { data: shops = [] } = useShops();
   const { data: products = [] } = useProducts();
+  const { data: iaBoostedShopIds = new Set<string>() } = useActiveBoostIds("shop", "ia");
+  const { data: iaBoostedProductIds = new Set<string>() } = useActiveBoostIds("product", "ia");
   const [open, setOpen] = useState(false);
   const [showGuestPrompt, setShowGuestPrompt] = useState(false);
   useEscapeToClose(open, () => setOpen(false));
@@ -109,7 +117,7 @@ export function LaGueriteChat() {
     setInput("");
     setLoading(true);
     try {
-      const systemPrompt = buildSystemPrompt(shops, products, lang, t("laGuerite_languageInstruction"));
+      const systemPrompt = buildSystemPrompt(shops, products, lang, t("laGuerite_languageInstruction"), iaBoostedShopIds, iaBoostedProductIds);
       const { data, error } = await supabase.functions.invoke("la-guerite-chat", {
         body: { systemPrompt, messages: next.map((m) => ({ role: m.role, content: m.content })) },
       });
