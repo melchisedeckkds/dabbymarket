@@ -44,6 +44,38 @@ export function useShopRatingsMap(shopIds: string[]) {
   });
 }
 
+// Ensemble des cibles (produits ou boutiques) actuellement boostées pour
+// un type de boost précis — utilisé pour l'encart "mis en avant" et le
+// bonus de rang plafonné (jamais un réordonnancement libre).
+export function useActiveBoostIds(targetType: "product" | "shop", boostType: string) {
+  return useQuery({
+    queryKey: ["active-boost-ids", targetType, boostType],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("active_boosts").select("target_id").eq("target_type", targetType).eq("boost_type", boostType);
+      if (error) throw error;
+      return new Set((data ?? []).map((r: any) => r.target_id as string));
+    },
+    staleTime: 60 * 1000,
+  });
+}
+
+// Applique un bonus de rang plafonné (jamais un réordonnancement libre) :
+// chaque élément boosté remonte d'au plus `cap` places dans le classement
+// organique déjà calculé — il ne peut jamais dépasser un résultat
+// nettement plus pertinent ou plus proche situé plus de `cap` places devant.
+export function applyRankCap<T extends { id: string }>(sorted: T[], boostedIds: Set<string>, cap: number): T[] {
+  const arr = [...sorted];
+  sorted.forEach((item) => {
+    if (!boostedIds.has(item.id)) return;
+    const idx = arr.findIndex((x) => x.id === item.id);
+    if (idx <= 0) return;
+    const newIdx = Math.max(0, idx - cap);
+    const [moved] = arr.splice(idx, 1);
+    arr.splice(newIdx, 0, moved);
+  });
+  return arr;
+}
+
 export function useUpdateShop() {
   const qc = useQueryClient();
   return useMutation({
