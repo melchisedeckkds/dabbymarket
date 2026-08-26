@@ -76,6 +76,88 @@ export function applyRankCap<T extends { id: string }>(sorted: T[], boostedIds: 
   return arr;
 }
 
+// ============ EMPLACEMENTS MULTIPLES (succursales + historique) ============
+// Une boutique physique peut avoir plusieurs emplacements actifs
+// (succursales) et un historique de déménagements — voir 0015.
+
+export function useActiveShopLocations() {
+  return useQuery({
+    queryKey: ["active-shop-locations"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("active_shop_locations").select("*");
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+// Tous les emplacements d'une boutique (actifs ET historiques), pour la
+// page boutique — affiche les succursales en cours et l'historique des
+// anciennes adresses.
+export function useShopLocations(shopId: string | undefined) {
+  return useQuery({
+    queryKey: ["shop-locations", shopId],
+    enabled: !!shopId,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("shop_locations").select("*").eq("shop_id", shopId!).order("moved_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+export function useAddShopLocation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { shopId: string; lat: number; lng: number; neighborhood: string; city: string; landmark?: string; label?: string }) => {
+      const { data, error } = await supabase.rpc("add_shop_location", {
+        p_shop_id: input.shopId, p_lat: input.lat, p_lng: input.lng,
+        p_neighborhood: input.neighborhood, p_city: input.city, p_landmark: input.landmark ?? null, p_label: input.label ?? null,
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["shop-locations", vars.shopId] });
+      qc.invalidateQueries({ queryKey: ["active-shop-locations"] });
+    },
+  });
+}
+
+export function useRelocateShopLocation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { locationId: string; shopId: string; lat: number; lng: number; neighborhood: string; city: string; landmark?: string }) => {
+      const { data, error } = await supabase.rpc("relocate_shop_location", {
+        p_location_id: input.locationId, p_lat: input.lat, p_lng: input.lng,
+        p_neighborhood: input.neighborhood, p_city: input.city, p_landmark: input.landmark ?? null,
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["shop-locations", vars.shopId] });
+      qc.invalidateQueries({ queryKey: ["active-shop-locations"] });
+      qc.invalidateQueries({ queryKey: ["shops"] });
+      qc.invalidateQueries({ queryKey: ["shop", vars.shopId] });
+    },
+  });
+}
+
+export function useCloseShopLocation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { locationId: string; shopId: string }) => {
+      const { error } = await supabase.rpc("close_shop_location", { p_location_id: input.locationId });
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["shop-locations", vars.shopId] });
+      qc.invalidateQueries({ queryKey: ["active-shop-locations"] });
+    },
+  });
+}
+
 export function useUpdateShop() {
   const qc = useQueryClient();
   return useMutation({

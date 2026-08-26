@@ -21,6 +21,14 @@ export const translations = {
     boost_typeIA: "Recommandation IA",
     boost_typeAccueil: "Mise en avant Accueil",
     boutique_boostMine: "Booster ma boutique",
+    boutique_ourAddresses: "Nos adresses",
+    boutique_addressHistory: "Historique des adresses",
+    boutique_relocate: "Déménager",
+    boutique_relocatedOn: "Déménagé le",
+    boutique_addLocation: "Ajouter une succursale",
+    boutique_locationLabelPlaceholder: "Nom de la succursale (ex : Agence Bastos)",
+    boutique_locationAdded: "Succursale ajoutée",
+    boutique_locationMoved: "Boutique déménagée — la carte est à jour",
     admin_tabEconomy: "Économie",
     admin_cfgTitle: "Paramètres du modèle économique",
     admin_cfgQuota: "Quota d'articles actifs gratuits / boutique",
@@ -101,7 +109,7 @@ export const translations = {
     auth_feature2: "Des boutiques vérifiées et notées par la communauté",
     auth_feature3: "Une messagerie directe pour négocier en toute sécurité",
     auth_adminRecognized: "Numéro reconnu — accès administrateur",
-    auth_pepitesOffered: "500 Pépites offertes à l'inscription",
+    auth_pepitesOffered: "Bonus de bienvenue à la première publication",
     auth_showPassword: "Afficher le mot de passe",
     auth_hidePassword: "Masquer le mot de passe",
     auth_invalidPhone: "Numéro invalide",
@@ -109,7 +117,7 @@ export const translations = {
     auth_nameRequired: "Ton nom, mon enfant ?",
     auth_signupFailed: "Inscription impossible",
     auth_loginFailed: "Connexion impossible",
-    auth_welcomeToast: "Bienvenue sur DabbyMarket 🎉 500 Pépites offertes",
+    auth_welcomeToast: "Bienvenue sur DabbyMarket 🎉",
     auth_backToast: "Content de te revoir 🍲",
 
     // Marché
@@ -451,8 +459,8 @@ export const translations = {
     profil_noPosts: "Aucune publication pour l'instant",
 
     // Popups d'engagement
-    engage_loginTitle: "Reçois 500 Pépites gratuites",
-    engage_loginDesc: "Connecte-toi ou crée un compte pour recevoir tes Pépites de bienvenue.",
+    engage_loginTitle: "Débloque ton bonus de bienvenue",
+    engage_loginDesc: "Connecte-toi ou crée un compte, puis publie ton 1er article avec photo pour recevoir ton bonus de Pépites.",
     engage_loginCta: "Se connecter",
     engage_shopTitle: "Lance ta boutique",
     engage_shopDesc: "Vends tes produits en quelques minutes, sans frais de création.",
@@ -538,7 +546,7 @@ export const translations = {
 
     // Mode visiteur
     guest_title: "Connexion requise",
-    guest_desc: "Créez un compte gratuit ou connectez-vous pour continuer — c'est rapide et vous recevez 500 Pépites offertes.",
+    guest_desc: "Créez un compte gratuit ou connectez-vous pour continuer — c'est rapide, et votre première publication avec photo vous rapporte un bonus de Pépites.",
     guest_cta: "Se connecter / S'inscrire",
 
     // Commentaires
@@ -558,7 +566,7 @@ export const translations = {
     onboarding_guardTitle: "La Guérite, votre guide",
     onboarding_guardDesc: "Une assistante disponible à tout moment pour vous orienter vers un produit, une boutique ou une tendance.",
     onboarding_pepitesTitle: "Les Pépites",
-    onboarding_pepitesDesc: "500 Pépites vous sont offertes dès l'inscription pour publier, créer votre boutique et booster vos produits.",
+    onboarding_pepitesDesc: "Créer une boutique et publier sont gratuits. Publiez votre premier article avec une photo pour recevoir un bonus de Pépites, à utiliser pour booster votre visibilité.",
     onboarding_skip: "Passer",
     onboarding_next: "Suivant",
     onboarding_finish: "C'est parti !",
@@ -598,6 +606,14 @@ export const translations = {
     boost_typeIA: "AI Recommendation",
     boost_typeAccueil: "Home Feature",
     boutique_boostMine: "Boost my shop",
+    boutique_ourAddresses: "Our addresses",
+    boutique_addressHistory: "Address history",
+    boutique_relocate: "Relocate",
+    boutique_relocatedOn: "Relocated on",
+    boutique_addLocation: "Add a branch",
+    boutique_locationLabelPlaceholder: "Branch name (e.g. Bastos branch)",
+    boutique_locationAdded: "Branch added",
+    boutique_locationMoved: "Shop relocated — the map is up to date",
     admin_tabEconomy: "Economy",
     admin_cfgTitle: "Economic model settings",
     admin_cfgQuota: "Free active listings quota / shop",
@@ -678,7 +694,7 @@ export const translations = {
     auth_feature2: "Shops verified and rated by the community",
     auth_feature3: "Direct messaging to negotiate safely",
     auth_adminRecognized: "Recognized number — admin access",
-    auth_pepitesOffered: "500 Pépites offered on sign-up",
+    auth_pepitesOffered: "Welcome bonus on your first listing",
     auth_showPassword: "Show password",
     auth_hidePassword: "Hide password",
     auth_invalidPhone: "Invalid phone number",
@@ -686,7 +702,7 @@ export const translations = {
     auth_nameRequired: "What's your name?",
     auth_signupFailed: "Sign-up failed",
     auth_loginFailed: "Login failed",
-    auth_welcomeToast: "Welcome to DabbyMarket 🎉 500 Pépites offered",
+    auth_welcomeToast: "Welcome to DabbyMarket 🎉",
     auth_backToast: "Good to see you again 🍲",
 
     // Marketplace
@@ -1028,8 +1044,8 @@ export const translations = {
     profil_noPosts: "No post yet",
 
     // Engagement popups
-    engage_loginTitle: "Get 500 free Pépites",
-    engage_loginDesc: "Sign in or create an account to receive your welcome Pépites.",
+    engage_loginTitle: "Unlock your welcome bonus",
+    engage_loginDesc: "Sign in or create an account, then publish your 1st listing with a photo to receive your Pépites bonus.",
     engage_loginCta: "Sign in",
     engage_shopTitle: "Launch your shop",
     engage_shopDesc: "Sell your products in minutes, free to create.",
@@ -1115,7 +1131,7 @@ export const translations = {
 
     // Guest mode
     guest_title: "Sign in required",
-    guest_desc: "Create a free account or log in to continue — it's quick, and you get 500 Pépites for free.",
+    guest_desc: "Create a free account or log in to continue — it's quick, and your first listing with a photo earns you a Pépites bonus.",
     guest_cta: "Log in / Sign up",
 
     // Comments
@@ -1135,7 +1151,7 @@ export const translations = {
     onboarding_guardTitle: "La Guérite, your guide",
     onboarding_guardDesc: "An assistant always available to help you find a product, a shop, or a trend.",
     onboarding_pepitesTitle: "The Pépites",
-    onboarding_pepitesDesc: "500 Pépites are offered to you on sign-up to publish, create your shop, and boost your products.",
+    onboarding_pepitesDesc: "Creating a shop and publishing are free. Publish your first listing with a photo to receive a Pépites bonus, spendable on visibility boosts.",
     onboarding_skip: "Skip",
     onboarding_next: "Next",
     onboarding_finish: "Let's go!",
