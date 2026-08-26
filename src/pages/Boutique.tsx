@@ -1,5 +1,5 @@
 import { Link, useParams, useNavigate } from "react-router-dom";
-import { Star, MapPin, ArrowLeft, MessageCircle, Store, Loader2, Eye, Compass, Clock as ClockIcon, Zap } from "lucide-react";
+import { Star, MapPin, ArrowLeft, MessageCircle, Store, Loader2, Eye, Compass, Clock as ClockIcon, Zap, Plus, X, History as Clock3 } from "lucide-react";
 import { useState } from "react";
 import { VerifiedBadge, ConditionBadge } from "@/components/product-card";
 import { ShopHeaderSkeleton } from "@/components/skeletons";
@@ -10,7 +10,8 @@ import { BottomNav } from "@/components/bottom-nav";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { useAuth } from "@/lib/auth";
 import { useApp } from "@/lib/app-store";
-import { useShop, useShops, useProducts, useReviews, useStartConversation, useRecordView, useViewsCount, useActiveBoosts } from "@/lib/queries";
+import { useShop, useShops, useProducts, useReviews, useStartConversation, useRecordView, useViewsCount, useActiveBoosts, useShopLocations, useAddShopLocation, useRelocateShopLocation, useCloseShopLocation } from "@/lib/queries";
+import { neighborhoodsFor, CITIES } from "@/lib/neighborhoods";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -304,6 +305,7 @@ export default function BoutiquePage() {
                 <Link to="/carte" className="block rounded-xl bg-primary py-2.5 text-center text-sm font-semibold text-primary-foreground">
                   {t("boutique_viewOnMap")}
                 </Link>
+                <ShopLocationsManager shopId={shop.id} isOwner={session?.user?.id === shop.owner_id} />
               </>
             )}
           </div>
@@ -340,6 +342,158 @@ export default function BoutiquePage() {
       <GuestPrompt open={showGuestPrompt} onClose={() => setShowGuestPrompt(false)} />
       <BoostPicker open={showBoostPicker} onClose={() => setShowBoostPicker(false)} targetType="shop" targetId={shop.id} />
       </div>
+    </div>
+  );
+}
+
+// =========================================================
+// Emplacements multiples (succursales) + historique de déménagement.
+// Visible par tous (transparence des anciennes/nouvelles adresses) ;
+// les actions d'ajout/déménagement/fermeture sont réservées au propriétaire.
+// =========================================================
+function ShopLocationsManager({ shopId, isOwner }: { shopId: string; isOwner: boolean }) {
+  const { t } = useApp();
+  const { data: locations = [] } = useShopLocations(shopId);
+  const addLocation = useAddShopLocation();
+  const relocate = useRelocateShopLocation();
+  const closeLocation = useCloseShopLocation();
+  const [mode, setMode] = useState<null | "add" | { relocateId: string }>(null);
+  const [city, setCity] = useState<string>(CITIES[0]);
+  const [neighborhood, setNeighborhood] = useState("");
+  const [landmark, setLandmark] = useState("");
+  const [label, setLabel] = useState("");
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const current = locations.filter((l: any) => l.is_current);
+  const history = locations.filter((l: any) => !l.is_current);
+
+  function resetForm() {
+    setMode(null);
+    setNeighborhood("");
+    setLandmark("");
+    setLabel("");
+    setCoords(null);
+  }
+
+  function useMyLocation() {
+    if (!("geolocation" in navigator)) return toast.error(t("creerBoutique_locationUnavailableError"));
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setLocating(false);
+      },
+      () => {
+        toast.error(t("creerBoutique_locationErrorToast"));
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  }
+
+  async function submit() {
+    if (!coords || !neighborhood) return toast.error(t("creerBoutique_physicalRequiredError"));
+    setSubmitting(true);
+    try {
+      if (mode === "add") {
+        await addLocation.mutateAsync({ shopId, lat: coords.lat, lng: coords.lng, neighborhood, city, landmark, label: label || undefined });
+        toast.success(t("boutique_locationAdded"));
+      } else if (mode && "relocateId" in mode) {
+        await relocate.mutateAsync({ locationId: mode.relocateId, shopId, lat: coords.lat, lng: coords.lng, neighborhood, city, landmark });
+        toast.success(t("boutique_locationMoved"));
+      }
+      resetForm();
+    } catch (e: any) {
+      toast.error(t("boost_purchaseFailed"), { description: e.message });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      {current.length > 1 && (
+        <div>
+          <p className="mb-1.5 text-xs font-semibold text-muted-foreground">{t("boutique_ourAddresses")}</p>
+          <div className="space-y-1.5">
+            {current.map((l: any) => (
+              <div key={l.id} className="flex items-start gap-2 rounded-xl border border-border bg-card p-2.5 text-xs">
+                <MapPin size={14} className="mt-0.5 shrink-0 text-primary" />
+                <div className="min-w-0 flex-1">
+                  {l.label && <p className="font-semibold">{l.label}</p>}
+                  <p className="text-muted-foreground">{l.neighborhood}, {l.city}{l.landmark ? ` — ${l.landmark}` : ""}</p>
+                </div>
+                {isOwner && (
+                  <button onClick={() => setMode({ relocateId: l.id })} className="shrink-0 text-[11px] font-semibold text-primary">
+                    {t("boutique_relocate")}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {history.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-xs font-semibold text-muted-foreground">{t("boutique_addressHistory")}</p>
+          <div className="space-y-1.5">
+            {history.map((l: any) => (
+              <div key={l.id} className="flex items-start gap-2 rounded-xl border border-dashed border-border bg-background p-2.5 text-xs text-muted-foreground">
+                <Clock3 size={13} className="mt-0.5 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="line-through">{l.neighborhood}, {l.city}{l.landmark ? ` — ${l.landmark}` : ""}</p>
+                  <p className="mt-0.5">
+                    {t("boutique_relocatedOn")} {l.replaced_at ? new Date(l.replaced_at).toLocaleDateString() : ""}
+                  </p>
+                </div>
+                {isOwner && current.length + history.length > 1 && !l.is_primary && (
+                  <button onClick={() => closeLocation.mutate({ locationId: l.id, shopId })} className="shrink-0 text-destructive">
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {isOwner && !mode && (
+        <button onClick={() => setMode("add")} className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border py-2.5 text-xs font-semibold text-primary">
+          <Plus size={14} /> {t("boutique_addLocation")}
+        </button>
+      )}
+
+      {isOwner && mode && (
+        <div className="space-y-2 rounded-xl border border-primary/30 bg-card p-3">
+          <p className="text-xs font-bold">{mode === "add" ? t("boutique_addLocation") : t("boutique_relocate")}</p>
+          {mode === "add" && (
+            <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder={t("boutique_locationLabelPlaceholder")} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs" />
+          )}
+          <button onClick={useMyLocation} disabled={locating} className="flex w-full items-center gap-2 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs">
+            {locating ? <Loader2 size={13} className="animate-spin text-primary" /> : <MapPin size={13} className="text-primary" />}
+            {coords ? `${t("creerBoutique_locationSaved")} (${coords.lat.toFixed(3)}, ${coords.lng.toFixed(3)})` : t("creerBoutique_useMyLocation")}
+          </button>
+          <div className="grid grid-cols-2 gap-1.5">
+            <select value={city} onChange={(e) => { setCity(e.target.value); setNeighborhood(""); }} className="rounded-lg border border-border bg-background px-2 py-1.5 text-xs">
+              {CITIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <select value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} className="rounded-lg border border-border bg-background px-2 py-1.5 text-xs">
+              <option value="">{t("creerBoutique_neighborhoodPlaceholder")}</option>
+              {neighborhoodsFor(city).map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
+          <input value={landmark} onChange={(e) => setLandmark(e.target.value)} placeholder={t("creerBoutique_landmarkPlaceholder")} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs" />
+          <div className="flex gap-2">
+            <button onClick={resetForm} className="flex-1 rounded-lg border border-border py-2 text-xs font-semibold">{t("common_cancel")}</button>
+            <button onClick={submit} disabled={submitting} className="flex-1 rounded-lg bg-primary py-2 text-xs font-bold text-primary-foreground disabled:opacity-60">
+              {t("common_save")}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -11,7 +11,7 @@ import { CATEGORIES } from "@/lib/categories";
 import { neighborhoodsFor } from "@/lib/neighborhoods";
 import { isOpenNow } from "@/lib/hours";
 import { useAuth } from "@/lib/auth";
-import { useShops, useProducts, useReviews, useStartConversation, useSendMessage, useShopRatingsMap, useActiveBoostIds, useAppConfig, applyRankCap } from "@/lib/queries";
+import { useShops, useProducts, useReviews, useStartConversation, useSendMessage, useShopRatingsMap, useActiveBoostIds, useAppConfig, applyRankCap, useActiveShopLocations } from "@/lib/queries";
 import { SponsoredBadge } from "@/components/sponsored-badge";
 import { cn } from "@/lib/utils";
 import { useEscapeToClose } from "@/hooks/use-escape-to-close";
@@ -70,7 +70,33 @@ export default function CartePage() {
   const { theme, t, lang } = useApp();
   const { profile } = useAuth();
   const { location, geoStatus, requestLocation } = useGeolocation();
-  const { data: shops = [], isLoading } = useShops();
+  const { data: rawLocations = [], isLoading } = useActiveShopLocations();
+  // Une entrée par emplacement actif (une boutique multi-succursales
+  // apparaît une fois par adresse) ; `id` reste l'id de la boutique pour
+  // rester compatible avec notes/boosts/navigation, `locationId` identifie
+  // le pin précis (clé React, déménagement, etc.).
+  const shops = useMemo(
+    () =>
+      rawLocations.map((l: any) => ({
+        id: l.shop_id,
+        locationId: l.location_id,
+        name: l.name,
+        category: l.category,
+        logo_url: l.logo_url,
+        verified: l.verified,
+        shop_type: l.shop_type,
+        delivery_zone: l.delivery_zone,
+        hours: l.hours,
+        lat: l.lat,
+        lng: l.lng,
+        neighborhood: l.neighborhood,
+        city: l.city,
+        landmark: l.landmark,
+        label: l.label,
+        is_primary: l.is_primary,
+      })),
+    [rawLocations],
+  );
   const [selected, setSelected] = useState<any | null>(null);
   const [routeFor, setRouteFor] = useState<any | null>(null);
   const [routeData, setRouteData] = useState<RouteResult | ApproximateRoute | null>(null);
@@ -311,7 +337,7 @@ export default function CartePage() {
             <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto no-scrollbar px-3 pb-2">
               {filtered.map((s: any) => (
                 <button
-                  key={s.id}
+                  key={s.locationId}
                   onClick={() => {
                     setSelected(s);
                     setFocus([s.lat, s.lng]);
@@ -418,7 +444,7 @@ function ShopListView({ shops }: { shops: any[] }) {
           const r = ratings?.get(s.id);
           const open = isOpenNow(s.hours);
           return (
-            <Link key={s.id} to={`/boutique/${s.id}`} className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3">
+            <Link key={s.locationId} to={`/boutique/${s.id}`} className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3">
               <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl bg-accent text-2xl">
                 {s.logo_url ? <img src={s.logo_url} alt="" className="h-full w-full object-cover" /> : "🏪"}
               </div>
