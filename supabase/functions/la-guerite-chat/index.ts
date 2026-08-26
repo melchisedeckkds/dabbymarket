@@ -91,7 +91,7 @@ serve(async (req) => {
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: String(systemPrompt).slice(0, 6000) }] },
           contents,
-          generationConfig: { temperature: 0.8, maxOutputTokens: 400 },
+          generationConfig: { temperature: 0.8, maxOutputTokens: 900 },
         }),
       },
     );
@@ -105,7 +105,14 @@ serve(async (req) => {
     }
 
     const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "Je n'ai pas bien saisi votre demande, pourriez-vous reformuler ?";
+    const candidate = data.candidates?.[0];
+    let text = candidate?.content?.parts?.[0]?.text ?? "Je n'ai pas bien saisi votre demande, pourriez-vous reformuler ?";
+    // Filet de sécurité : si la réponse a malgré tout été coupée par la
+    // limite de tokens, on l'indique clairement plutôt que de laisser une
+    // phrase tronquée en plein milieu.
+    if (candidate?.finishReason === "MAX_TOKENS" && text) {
+      text = text.replace(/[\s,;:*_-]+$/, "") + "…";
+    }
 
     return new Response(JSON.stringify({ text }), {
       headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
