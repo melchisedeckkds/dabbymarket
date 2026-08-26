@@ -6,6 +6,7 @@ export type GeoPoint = { lat: number; lng: number; accuracy?: number };
 
 export type ShopPin = {
   id: string;
+  locationId?: string;
   name: string;
   category: string;
   verified: boolean;
@@ -210,7 +211,7 @@ export default function MapView({
 
       {shops.map((s) => (
         <Marker
-          key={s.id}
+          key={s.locationId ?? s.id}
           position={[s.lat, s.lng]}
           icon={shopPin(s, selectedId === s.id)}
           eventHandlers={{ click: () => onSelect(s) }}
