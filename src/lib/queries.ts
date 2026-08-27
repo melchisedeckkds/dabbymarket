@@ -76,6 +76,34 @@ export function applyRankCap<T extends { id: string }>(sorted: T[], boostedIds: 
   return arr;
 }
 
+// ============ ABONNEMENT AUX BOUTIQUES (suivre/suivi) ============
+export function useIsFollowing(shopId: string | undefined) {
+  const { session } = useAuth();
+  return useQuery({
+    queryKey: ["is-following", shopId, session?.user?.id],
+    enabled: !!shopId && !!session?.user?.id,
+    queryFn: async () => {
+      const { data } = await supabase.from("follows").select("id").eq("shop_id", shopId!).eq("follower_id", session!.user.id).maybeSingle();
+      return !!data;
+    },
+  });
+}
+
+export function useToggleFollow(shopId: string | undefined) {
+  const qc = useQueryClient();
+  const { session } = useAuth();
+  return useMutation({
+    mutationFn: async (following: boolean) => {
+      if (following) {
+        await supabase.from("follows").delete().eq("shop_id", shopId!).eq("follower_id", session!.user.id);
+      } else {
+        await supabase.from("follows").insert({ shop_id: shopId!, follower_id: session!.user.id });
+      }
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["is-following", shopId] }),
+  });
+}
+
 // ============ EMPLACEMENTS MULTIPLES (succursales + historique) ============
 // Une boutique physique peut avoir plusieurs emplacements actifs
 // (succursales) et un historique de déménagements — voir 0015.
