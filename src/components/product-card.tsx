@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Heart, MessageCircle, Share2, Bookmark, BadgeCheck, Zap, Star } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { useLikes, useToggleLike, useWishlist, useToggleWishlist } from "@/lib/queries";
+import { useLikes, useToggleLike, useWishlist, useToggleWishlist, useIsFollowing, useToggleFollow } from "@/lib/queries";
 import { hapticLight } from "@/lib/haptics";
 import { shareContent } from "@/lib/share";
 import { useApp } from "@/lib/app-store";
@@ -21,7 +21,7 @@ type RealProduct = {
   condition: "Neuf" | "Occasion";
   images: string[];
   boosted_until: string | null;
-  shops: { id: string; name: string; logo_url: string | null; verified: boolean } | null;
+  shops: { id: string; owner_id: string; name: string; logo_url: string | null; verified: boolean } | null;
 };
 
 export function ProductCard({ product, rating, sponsored }: { product: RealProduct; rating?: { avg: number; count: number }; sponsored?: boolean }) {
@@ -38,6 +38,17 @@ export function ProductCard({ product, rating, sponsored }: { product: RealProdu
   const isBoosted = (!!product.boosted_until && new Date(product.boosted_until).getTime() > Date.now()) || !!sponsored;
   const photo = product.images?.[0];
   const [showGuestPrompt, setShowGuestPrompt] = useState(false);
+  const { data: following = false } = useIsFollowing(shop?.id);
+  const toggleFollow = useToggleFollow(shop?.id);
+  const isOwnShop = !!session && shop?.owner_id === session.user.id;
+
+  function handleFollow(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!session) return setShowGuestPrompt(true);
+    hapticLight();
+    toggleFollow.mutate(following);
+  }
 
   function handleLike() {
     if (!session) return setShowGuestPrompt(true);
@@ -75,6 +86,17 @@ export function ProductCard({ product, rating, sponsored }: { product: RealProdu
             </span>
           )}
         </div>
+        {!isOwnShop && (
+          <button
+            onClick={handleFollow}
+            className={cn(
+              "shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-bold transition-colors",
+              following ? "border-border bg-accent text-muted-foreground" : "border-primary bg-primary/10 text-primary",
+            )}
+          >
+            {following ? t("boutique_following") : t("boutique_follow")}
+          </button>
+        )}
         <ConditionBadge condition={product.condition} />
       </Link>
 
