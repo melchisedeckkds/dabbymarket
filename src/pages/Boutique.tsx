@@ -10,7 +10,7 @@ import { BottomNav } from "@/components/bottom-nav";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { useAuth } from "@/lib/auth";
 import { useApp } from "@/lib/app-store";
-import { useShop, useShops, useProducts, useReviews, useStartConversation, useRecordView, useViewsCount, useActiveBoosts, useShopLocations, useAddShopLocation, useRelocateShopLocation, useCloseShopLocation } from "@/lib/queries";
+import { useShop, useShops, useProducts, useReviews, useStartConversation, useRecordView, useViewsCount, useActiveBoosts, useShopLocations, useAddShopLocation, useRelocateShopLocation, useCloseShopLocation, useIsFollowing, useToggleFollow } from "@/lib/queries";
 import { neighborhoodsFor, CITIES } from "@/lib/neighborhoods";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
@@ -28,33 +28,6 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
   const dLng = ((b.lng - a.lng) * Math.PI) / 180;
   const s = Math.sin(dLat / 2) ** 2 + Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
-}
-
-function useIsFollowing(shopId: string | undefined) {
-  const { session } = useAuth();
-  return useQuery({
-    queryKey: ["is-following", shopId, session?.user?.id],
-    enabled: !!shopId && !!session?.user?.id,
-    queryFn: async () => {
-      const { data } = await supabase.from("follows").select("id").eq("shop_id", shopId!).eq("follower_id", session!.user.id).maybeSingle();
-      return !!data;
-    },
-  });
-}
-
-function useToggleFollow(shopId: string | undefined) {
-  const qc = useQueryClient();
-  const { session } = useAuth();
-  return useMutation({
-    mutationFn: async (following: boolean) => {
-      if (following) {
-        await supabase.from("follows").delete().eq("shop_id", shopId!).eq("follower_id", session!.user.id);
-      } else {
-        await supabase.from("follows").insert({ shop_id: shopId!, follower_id: session!.user.id });
-      }
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["is-following", shopId] }),
-  });
 }
 
 export default function BoutiquePage() {
@@ -75,6 +48,7 @@ export default function BoutiquePage() {
   const [showGuestPrompt, setShowGuestPrompt] = useState(false);
   const [showBoostPicker, setShowBoostPicker] = useState(false);
   const { data: activeShopBoosts = [] } = useActiveBoosts("shop", id);
+  const { data: allShops = [] } = useShops();
 
   if (isLoading) {
     return <ShopHeaderSkeleton />;
@@ -92,7 +66,6 @@ export default function BoutiquePage() {
   const avgRating = reviews.length ? (reviews.reduce((s: number, r: any) => s + r.rating, 0) / reviews.length).toFixed(1) : null;
   const openNow = isOpenNow(shop?.hours);
   const wellRated = reviews.length >= 5 && Number(avgRating) >= 4.5;
-  const { data: allShops = [] } = useShops();
   const nearby = shop && shop.shop_type !== "no_location" && shop.lat != null
     ? allShops
         .filter((s: any) => s.id !== shop.id && s.lat != null && s.lng != null)
