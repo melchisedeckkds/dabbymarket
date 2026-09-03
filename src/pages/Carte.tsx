@@ -11,7 +11,8 @@ import { CATEGORIES } from "@/lib/categories";
 import { neighborhoodsFor } from "@/lib/neighborhoods";
 import { isOpenNow } from "@/lib/hours";
 import { useAuth } from "@/lib/auth";
-import { useShops, useProducts, useReviews, useStartConversation, useSendMessage, useShopRatingsMap, useActiveBoostIds, useAppConfig, applyRankCap, useActiveShopLocations } from "@/lib/queries";
+import { useShops, useProducts, useReviews, useStartConversation, useSendMessage, useShopRatingsMap, useActiveBoostIds, useAppConfig, applyRankCap, useActiveShopLocations, useFlashListings } from "@/lib/queries";
+import { approxCoordsForNeighborhood, formatFlashRemaining } from "@/lib/flash";
 import { SponsoredBadge } from "@/components/sponsored-badge";
 import { cn } from "@/lib/utils";
 import { useEscapeToClose } from "@/hooks/use-escape-to-close";
@@ -126,8 +127,11 @@ export default function CartePage() {
   const [openNowOnly, setOpenNowOnly] = useState(false);
   const [areaBounds, setAreaBounds] = useState<LatLngBounds | null>(null);
   const [pendingBounds, setPendingBounds] = useState<LatLngBounds | null>(null);
+  const [showFlash, setShowFlash] = useState(true);
+  const [selectedFlash, setSelectedFlash] = useState<any | null>(null);
   const areaDirty = !!pendingBounds;
   useEscapeToClose(showLocateSheet, () => setShowLocateSheet(false));
+  useEscapeToClose(!!selectedFlash, () => setSelectedFlash(null));
   useEscapeToClose(!!selected, () => setSelected(null));
 
   // Oriente la carte vers le pays de l'utilisateur (déduit de son numéro de
@@ -189,6 +193,32 @@ export default function CartePage() {
     return fromShops.size ? Array.from(fromShops).sort() : neighborhoodsFor("Yaoundé");
   }, [shopsWithDistance]);
 
+  // ⚡ Vente Flash — points dérivés du quartier (jamais de position exacte,
+  // voir approxCoordsForNeighborhood) ; les annonces "à visibilité réduite"
+  // (signalements) restent consultables via leur lien direct mais ne sont
+  // pas mises en avant sur la Carte.
+  const { data: flashListings = [] } = useFlashListings();
+  const flashWithPosition = useMemo(
+    () =>
+      flashListings
+        .filter((f: any) => f.visibility !== "reduced")
+        .map((f: any) => ({ ...f, ...approxCoordsForNeighborhood(f.city, f.neighborhood, f.id) })),
+    [flashListings],
+  );
+  const filteredFlash = useMemo(() => {
+    if (!showFlash) return [];
+    return flashWithPosition
+      .map((f: any) => ({ ...f, distanceKm: location ? haversineKm(location, f) : null }))
+      .filter((f: any) => {
+        if (cat && f.category !== cat) return false;
+        if (neighborhood && f.neighborhood !== neighborhood) return false;
+        if (query && !`${f.title}`.toLowerCase().includes(query.toLowerCase())) return false;
+        if (f.distanceKm != null && f.distanceKm > distMax) return false;
+        if (areaBounds && !areaBounds.contains([f.lat, f.lng])) return false;
+        return true;
+      });
+  }, [flashWithPosition, showFlash, cat, distMax, query, neighborhood, location, areaBounds]);
+
   const handleLocate = async () => {
     if (geoStatus === "granted" && location) {
       setFocus([location.lat, location.lng]);
@@ -216,16 +246,27 @@ export default function CartePage() {
           <Suspense fallback={<MapSkeleton />}>
             <MapView
               shops={filtered}
-              selectedId={selected?.id ?? null}
+              flashPins={filteredFlash.map((f: any) => ({ id: f.id, title: f.title, lat: f.lat, lng: f.lng, thumbnail: f.images?.[0] }))}
+              selectedId={selected?.id ?? selectedFlash?.id ?? null}
               onSelect={(s: any) => {
                 setSelected(s);
+                setSelectedFlash(null);
                 setFocus([s.lat, s.lng]);
+              }}
+              onSelectFlash={(f: any) => {
+                const full = filteredFlash.find((x: any) => x.id === f.id);
+                setSelectedFlash(full ?? f);
+                setSelected(null);
+                setFocus([f.lat, f.lng]);
               }}
               user={location}
               theme={theme}
               focus={focus}
               countryCenter={countryCenter}
-              onMapClick={() => setSelected(null)}
+              onMapClick={() => {
+                setSelected(null);
+                setSelectedFlash(null);
+              }}
               onAreaChange={setPendingBounds}
               route={routeData?.coordinates}
               routeApproximate={routeData?.approximate}
@@ -234,7 +275,9 @@ export default function CartePage() {
         ) : (
           <MapSkeleton />
         ))}
-        {view === "list" && <ShopListView shops={filtered} />}
+        {view === "list" && (
+          <ShopListView shops={filtered} flashListings={filteredFlash} />
+        )}
 
         <div className="pointer-events-none absolute inset-x-0 top-0 z-[350] h-40 bg-gradient-to-b from-background/85 via-background/40 to-transparent" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[350] h-32 bg-gradient-to-t from-background/70 to-transparent" />
@@ -294,6 +337,15 @@ export default function CartePage() {
               )}
             >
               <Clock size={13} /> {t("carte_openNow")}
+            </button>
+            <button
+              onClick={() => setShowFlash((v) => !v)}
+              className={cn(
+                "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold shadow-sm backdrop-blur transition-all",
+                showFlash ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card/95 text-foreground",
+              )}
+            >
+              ⚡ {t("flash_toggleShowOnMap")}
             </button>
           </div>
         </div>
@@ -368,6 +420,9 @@ export default function CartePage() {
         {selected && !routeFor && (
           <ShopSheet shop={selected} onClose={() => setSelected(null)} onRoute={(s) => setRouteFor(s)} userLocation={location} />
         )}
+        {selectedFlash && !routeFor && (
+          <FlashSheet flash={selectedFlash} onClose={() => setSelectedFlash(null)} />
+        )}
         {routeFor && (
           <RouteSheet
             shop={routeFor}
@@ -423,13 +478,13 @@ export default function CartePage() {
   );
 }
 
-function ShopListView({ shops }: { shops: any[] }) {
+function ShopListView({ shops, flashListings = [] }: { shops: any[]; flashListings?: any[] }) {
   const { t } = useApp();
   const shopIds = useMemo(() => shops.map((s) => s.id), [shops]);
   const { data: ratings } = useShopRatingsMap(shopIds);
   const { data: carteBoostIds = new Set<string>() } = useActiveBoostIds("shop", "carte");
 
-  if (shops.length === 0) {
+  if (shops.length === 0 && flashListings.length === 0) {
     return (
       <div className="grid h-full place-items-center p-6 text-center text-sm text-muted-foreground">
         {t("carte_noResults")}
@@ -439,6 +494,26 @@ function ShopListView({ shops }: { shops: any[] }) {
 
   return (
     <div className="h-full overflow-y-auto pb-24 pt-36">
+      {flashListings.length > 0 && (
+        <div className="space-y-2 px-3 pb-3">
+          <p className="flex items-center gap-1.5 px-1 text-xs font-bold uppercase tracking-wide text-primary">⚡ {t("flash_title")}</p>
+          {flashListings.map((f: any) => (
+            <Link key={f.id} to={`/flash/${f.id}`} className="flex items-center gap-3 rounded-2xl border border-dashed border-primary/40 bg-card p-3">
+              <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-xl bg-accent text-xl">
+                {f.images?.[0] ? <img src={f.images[0]} alt="" className="h-full w-full object-cover" /> : "⚡"}
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="truncate text-sm font-bold">{f.title}</span>
+                <p className="truncate text-xs text-muted-foreground">{f.neighborhood}, {f.city}</p>
+                <div className="mt-1 flex items-center gap-2 text-[11px] text-primary font-semibold">
+                  {f.price_xaf.toLocaleString("fr-FR")} FCFA
+                  {f.distanceKm != null && <span className="text-muted-foreground font-normal">{f.distanceKm?.toFixed?.(1)} km</span>}
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
       <div className="space-y-2 px-3">
         {shops.map((s: any) => {
           const r = ratings?.get(s.id);
@@ -498,6 +573,36 @@ function FilterChip({ children, active }: { children: React.ReactNode; active?: 
       )}
     >
       {children}
+    </div>
+  );
+}
+
+function FlashSheet({ flash, onClose }: { flash: any; onClose: () => void }) {
+  const { t } = useApp();
+  const remaining = formatFlashRemaining(flash.expires_at, {
+    expired: t("flash_expired"),
+    hoursLeft: (n) => `${n} ${t("flash_hoursLeft")}`,
+    daysLeft: (n) => `${n} ${t("flash_daysLeft")}`,
+  });
+  return (
+    <div className="absolute inset-x-0 bottom-0 z-[500] animate-in slide-in-from-bottom-6 rounded-t-3xl border-t border-primary/30 bg-card p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] shadow-2xl">
+      <button onClick={onClose} className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full bg-accent">
+        <X size={16} />
+      </button>
+      <div className="flex items-center gap-3">
+        <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-2xl bg-accent text-2xl">
+          {flash.images?.[0] ? <img src={flash.images[0]} alt="" className="h-full w-full object-cover" /> : "⚡"}
+        </div>
+        <div className="min-w-0 flex-1">
+          <span className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-bold text-primary">⚡ {t("flash_title")}</span>
+          <p className="mt-1 truncate text-sm font-bold">{flash.title}</p>
+          <p className="text-sm font-bold text-primary">{flash.price_xaf.toLocaleString("fr-FR")} FCFA</p>
+          <p className="truncate text-xs text-muted-foreground">{flash.neighborhood}, {flash.city} · {t("flash_expiresIn")} {remaining}</p>
+        </div>
+      </div>
+      <Link to={`/flash/${flash.id}`} className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl gold-gradient py-2.5 text-sm font-bold">
+        {t("common_seeMore")}
+      </Link>
     </div>
   );
 }

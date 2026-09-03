@@ -1,14 +1,21 @@
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Phone, BadgeCheck, Store, Heart, MessageCircle } from "lucide-react";
+import { useState } from "react";
+import { ArrowLeft, Phone, BadgeCheck, Store, Heart, MessageCircle, Flag } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { useApp } from "@/lib/app-store";
+import { useAuth } from "@/lib/auth";
 import { useUserProfile, useUserShops, useUserPosts, useShopRatingsMap } from "@/lib/queries";
 import { ShopHeaderSkeleton } from "@/components/skeletons";
 import { maskPhone } from "@/lib/utils";
+import { ReportDialog } from "@/components/report-dialog";
+import { GuestPrompt } from "@/components/guest-prompt";
 
 export default function ProfilPage() {
   const { id } = useParams<{ id: string }>();
   const { t, lang } = useApp();
+  const { session } = useAuth();
+  const [showReportDialog, setShowReportDialog] = useState(false);
+  const [showGuestPrompt, setShowGuestPrompt] = useState(false);
   const locale = lang === "en" ? "en-US" : "fr-FR";
   const { data: profile, isLoading } = useUserProfile(id);
   const { data: shops = [] } = useUserShops(id);
@@ -34,6 +41,15 @@ export default function ProfilPage() {
           <ArrowLeft size={18} />
         </Link>
         <h1 className="text-lg font-bold">{t("profil_title")}</h1>
+        {session?.user?.id !== id && (
+          <button
+            onClick={() => (session ? setShowReportDialog(true) : setShowGuestPrompt(true))}
+            className="ml-auto grid h-9 w-9 place-items-center rounded-full bg-card text-muted-foreground"
+            aria-label={t("report_title")}
+          >
+            <Flag size={16} />
+          </button>
+        )}
       </div>
 
       <div className="p-4">
@@ -104,6 +120,12 @@ export default function ProfilPage() {
           )}
         </section>
       </div>
+      {id && (
+        <>
+          <ReportDialog open={showReportDialog} onClose={() => setShowReportDialog(false)} targetType="user" targetId={id} />
+          <GuestPrompt open={showGuestPrompt} onClose={() => setShowGuestPrompt(false)} />
+        </>
+      )}
     </AppShell>
   );
 }

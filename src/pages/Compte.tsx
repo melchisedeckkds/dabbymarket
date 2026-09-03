@@ -2,7 +2,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { AppShell } from "@/components/app-shell";
 import { useApp } from "@/lib/app-store";
 import { useAuth } from "@/lib/auth";
-import { useWishlist, useMyShops, useMyTransactions, useMyViews7d, useMoveProduct, useUpdateProfile, useUpdateShop, uploadImage } from "@/lib/queries";
+import { useWishlist, useMyShops, useMyTransactions, useMyViews7d, useMoveProduct, useUpdateProfile, useUpdateShop, uploadImage, useMyFlashListings, useMarkFlashStatus } from "@/lib/queries";
 import { compressImage } from "@/lib/image";
 import { Pepite } from "@/components/pepite";
 import { MiniBarChart } from "@/components/mini-chart";
@@ -11,8 +11,9 @@ import { useEffect, useRef, useState } from "react";
 import {
   Bookmark, Heart, Star, Store, Moon, Sun, Languages, Settings, ChevronRight,
   ShoppingBag, LogOut, Sparkles, TrendingUp, ShieldCheck, MessageSquarePlus,
-  LayoutDashboard, Plus, Loader2, FileText, Camera,
+  LayoutDashboard, Plus, Loader2, FileText, Camera, Zap, CheckCircle2, Trash2,
 } from "lucide-react";
+import { formatFlashRemaining } from "@/lib/flash";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { VerifiedBadge } from "@/components/product-card";
@@ -70,7 +71,7 @@ export default function ComptePage() {
   const { theme, toggleTheme, lang, setLang, dataSaver, toggleDataSaver, t } = useApp();
   const { profile, signOut, session } = useAuth();
   const navigate = useNavigate();
-  const [tab, setTab] = useState<"achats" | "boutique">("achats");
+  const [tab, setTab] = useState<"achats" | "boutique" | "flash">("achats");
   const { data: wishlistData = [] } = useWishlist();
   const { data: followedShops = [] } = useFollowedShops();
   const { data: myShops = [], isLoading: loadingShops } = useMyShops();
@@ -161,10 +162,11 @@ export default function ComptePage() {
           )}
         </div>
 
-        <div className="mt-4 grid grid-cols-2 rounded-xl border border-border bg-card p-1">
+        <div className="mt-4 grid grid-cols-3 rounded-xl border border-border bg-card p-1">
           {([
             ["achats", t("compte_myPurchases"), ShoppingBag],
             ["boutique", t("compte_myShop"), Store],
+            ["flash", t("flash_myListings"), Zap],
           ] as const).map(([k, label, Icon]) => (
             <button key={k} onClick={() => setTab(k)} className={cn("flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-colors", tab === k ? "bg-primary text-primary-foreground" : "text-muted-foreground")}>
               <Icon size={14} /> {label}
@@ -318,6 +320,8 @@ export default function ComptePage() {
           </div>
         )}
 
+        {tab === "flash" && <MyFlashTab />}
+
         {/* ===== MENU DES RÉGLAGES ===== */}
         <div className="mt-6 space-y-2">
           <Row to="/suggestions" icon={MessageSquarePlus} label={t("compte_suggestFeature")} />
@@ -382,6 +386,79 @@ function UserDashboard({
         <div className="border-t border-primary/20 p-3">
           <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{t("compte_views7d")}</p>
           <MiniBarChart data={views7d.values} labels={views7d.labels} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MyFlashTab() {
+  const { t } = useApp();
+  const { data: listings = [], isLoading } = useMyFlashListings();
+  const markStatus = useMarkFlashStatus();
+
+  const statusLabel: Record<string, string> = {
+    active: "",
+    sold: t("flash_statusSold"),
+    removed: t("flash_statusRemoved"),
+    expired: t("flash_statusExpired"),
+    suspended: t("flash_statusSuspended"),
+  };
+
+  async function handleMark(id: string, status: "sold" | "removed") {
+    try {
+      await markStatus.mutateAsync({ flashId: id, status });
+      toast.success(status === "sold" ? t("flash_soldToast") : t("flash_removedToast"));
+    } catch (err: any) {
+      toast.error(t("flash_actionFailed"), { description: err.message });
+    }
+  }
+
+  return (
+    <div className="mt-4 space-y-3">
+      <Link to="/vendre-rapidement" className="flex items-center justify-center gap-2 rounded-xl gold-gradient py-3 text-sm font-bold">
+        <Zap size={16} /> {t("flash_createOne")}
+      </Link>
+
+      {isLoading ? (
+        <ShopListSkeleton />
+      ) : listings.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-border p-6 text-center text-xs text-muted-foreground">{t("flash_noListings")}</p>
+      ) : (
+        <div className="space-y-2">
+          {listings.map((f: any) => {
+            const remaining = f.status === "active" ? formatFlashRemaining(f.expires_at, {
+              expired: t("flash_expired"),
+              hoursLeft: (n) => `${n} ${t("flash_hoursLeft")}`,
+              daysLeft: (n) => `${n} ${t("flash_daysLeft")}`,
+            }) : null;
+            return (
+              <div key={f.id} className="rounded-xl border border-border bg-card p-3">
+                <Link to={`/flash/${f.id}`} className="flex items-center gap-3">
+                  <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-lg bg-accent text-lg">
+                    {f.images?.[0] ? <img src={f.images[0]} alt="" className="h-full w-full object-cover" /> : "⚡"}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold">{f.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {f.price_xaf.toLocaleString("fr-FR")} FCFA
+                      {f.status === "active" ? ` · ${t("flash_expiresIn")} ${remaining}` : ` · ${statusLabel[f.status]}`}
+                    </p>
+                  </div>
+                </Link>
+                {f.status === "active" && (
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <button onClick={() => handleMark(f.id, "sold")} className="flex items-center justify-center gap-1 rounded-lg bg-[color:var(--verified)] py-2 text-[11px] font-bold text-background">
+                      <CheckCircle2 size={12} /> {t("flash_markSold")}
+                    </button>
+                    <button onClick={() => handleMark(f.id, "removed")} className="flex items-center justify-center gap-1 rounded-lg border border-destructive py-2 text-[11px] font-bold text-destructive">
+                      <Trash2 size={12} /> {t("flash_remove")}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

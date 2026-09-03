@@ -1,10 +1,11 @@
 import { Link, useParams, useNavigate } from "react-router-dom";
-import { Star, MapPin, ArrowLeft, MessageCircle, Store, Loader2, Eye, Compass, Clock as ClockIcon, Zap, Plus, X, History as Clock3 } from "lucide-react";
+import { Star, MapPin, ArrowLeft, MessageCircle, Store, Loader2, Eye, Compass, Clock as ClockIcon, Zap, Plus, X, History as Clock3, Flag } from "lucide-react";
 import { useState } from "react";
 import { VerifiedBadge, ConditionBadge } from "@/components/product-card";
 import { ShopHeaderSkeleton } from "@/components/skeletons";
 import { GuestPrompt } from "@/components/guest-prompt";
 import { BoostPicker } from "@/components/boost-picker";
+import { ReportDialog } from "@/components/report-dialog";
 import { SponsoredBadge } from "@/components/sponsored-badge";
 import { BottomNav } from "@/components/bottom-nav";
 import { SidebarNav } from "@/components/sidebar-nav";
@@ -47,6 +48,7 @@ export default function BoutiquePage() {
   const [tab, setTab] = useState<"produits" | "avis" | "apropos" | "loc">("produits");
   const [showGuestPrompt, setShowGuestPrompt] = useState(false);
   const [showBoostPicker, setShowBoostPicker] = useState(false);
+  const [showReportDialog, setShowReportDialog] = useState(false);
   const { data: activeShopBoosts = [] } = useActiveBoosts("shop", id);
   const { data: allShops = [] } = useShops();
 
@@ -95,6 +97,15 @@ export default function BoutiquePage() {
         <Link to="/" className="absolute left-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-background/70 backdrop-blur" aria-label={t("common_back")}>
           <ArrowLeft size={18} />
         </Link>
+        {session?.user?.id !== shop.owner_id && (
+          <button
+            onClick={() => (session ? setShowReportDialog(true) : setShowGuestPrompt(true))}
+            className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-background/70 text-muted-foreground backdrop-blur"
+            aria-label={t("report_title")}
+          >
+            <Flag size={16} />
+          </button>
+        )}
       </div>
 
       <div className="-mt-10 px-4">
@@ -314,6 +325,7 @@ export default function BoutiquePage() {
       <div className="lg:hidden"><BottomNav /></div>
       <GuestPrompt open={showGuestPrompt} onClose={() => setShowGuestPrompt(false)} />
       <BoostPicker open={showBoostPicker} onClose={() => setShowBoostPicker(false)} targetType="shop" targetId={shop.id} />
+      <ReportDialog open={showReportDialog} onClose={() => setShowReportDialog(false)} targetType="shop" targetId={shop.id} />
       </div>
     </div>
   );

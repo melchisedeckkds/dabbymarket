@@ -1,7 +1,7 @@
 import { Link, useSearchParams } from "react-router-dom";
 import {
   Search, Sparkles, Map as MapIcon, MessageCircle, Share2, Heart, Bookmark,
-  Shirt, Smartphone, Utensils, Sofa, Wrench, LayoutGrid, Package, Loader2,
+  Shirt, Smartphone, Utensils, Sofa, Wrench, LayoutGrid, Package, Loader2, Flag,
 } from "lucide-react";
 import { useMemo, useState, useEffect, useRef, type ComponentType } from "react";
 import { motion } from "framer-motion";
@@ -11,6 +11,7 @@ import { ProductCard } from "@/components/product-card";
 import { useInfiniteProducts, useInfinitePosts, useSinglePost, useToggleLike, useLikes, useComments, useShopRatingsMap, useActiveBoostIds, useAppConfig, applyRankCap } from "@/lib/queries";
 import { CommentSheet } from "@/components/comment-sheet";
 import { GuestPrompt } from "@/components/guest-prompt";
+import { ReportDialog } from "@/components/report-dialog";
 import { HashtagText } from "@/components/hashtag-text";
 import { hapticLight } from "@/lib/haptics";
 import { useAuth } from "@/lib/auth";
@@ -286,6 +287,7 @@ function TextPost({ post }: { post: any }) {
   const author = post.profiles;
   const [showComments, setShowComments] = useState(false);
   const [showGuestPrompt, setShowGuestPrompt] = useState(false);
+  const [showReportDialog, setShowReportDialog] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [burst, setBurst] = useState(false);
   const { data: postComments = [] } = useComments(undefined, post.id);
@@ -321,6 +323,15 @@ function TextPost({ post }: { post: any }) {
         <Link to={`/profil/${author?.id}`} className="min-w-0 flex-1">
           <span className="truncate text-sm font-semibold">{author?.name ?? "DabbyMarket"}</span>
         </Link>
+        {session?.user?.id !== author?.id && (
+          <button
+            onClick={() => (session ? setShowReportDialog(true) : setShowGuestPrompt(true))}
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-muted-foreground"
+            aria-label={t("report_title")}
+          >
+            <Flag size={14} />
+          </button>
+        )}
       </div>
 
       {/* Image — proportions naturelles conservées, jamais recadrée de force */}
@@ -391,6 +402,7 @@ function TextPost({ post }: { post: any }) {
       )}
       {showComments && <CommentSheet postId={post.id} onClose={() => setShowComments(false)} />}
       <GuestPrompt open={showGuestPrompt} onClose={() => setShowGuestPrompt(false)} />
+      <ReportDialog open={showReportDialog} onClose={() => setShowReportDialog(false)} targetType="post" targetId={post.id} />
     </article>
   );
       }

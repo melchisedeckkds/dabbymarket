@@ -29,6 +29,8 @@ import {
   useAppConfig,
   usePepitePacks,
   useBoostCatalog,
+  useAdminFlashListings,
+  useAdminSetFlashStatus,
 } from "@/lib/queries";
 import { useQueryClient, useMutation as useMutationRQ } from "@tanstack/react-query";
 import { useApp } from "@/lib/app-store";
@@ -59,6 +61,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 
 function formatXAF(n: number) {
   return `${n.toLocaleString("fr-FR")} FCFA`;
@@ -698,6 +701,11 @@ function ContentTab() {
       </section>
 
       <section>
+        <h2 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">⚡ {t("admin_flashListings")}</h2>
+        <FlashModerationList />
+      </section>
+
+      <section>
         <h2 className="mb-2 text-sm font-semibold">{t("admin_recentProducts")}</h2>
         <div className="space-y-2">
           {products.slice(0, 30).map((p: any) => (
@@ -729,6 +737,55 @@ function ContentTab() {
         onOpenChange={(v) => !v && setConfirm(null)}
         onConfirm={handleDelete}
       />
+    </div>
+  );
+}
+
+// =========================================================
+// VENTE FLASH — liste de modération. Les statuts 'suspended' (seuil de
+// signalements atteint) sont mis en évidence pour une revue prioritaire.
+// =========================================================
+function FlashModerationList() {
+  const { t } = useApp();
+  const { data: listings = [], isLoading } = useAdminFlashListings();
+  const setStatus = useAdminSetFlashStatus();
+
+  async function handle(id: string, status: "active" | "removed" | "suspended") {
+    try {
+      await setStatus.mutateAsync({ flashId: id, status });
+      toast.success(t("admin_actionDone"));
+    } catch (err: any) {
+      toast.error(t("admin_actionFailed"), { description: err.message });
+    }
+  }
+
+  if (isLoading) return null;
+  if (listings.length === 0) {
+    return <p className="rounded-xl border border-dashed border-border p-4 text-center text-xs text-muted-foreground">{t("admin_noContent")}</p>;
+  }
+
+  return (
+    <div className="space-y-2">
+      {listings.map((f: any) => (
+        <div key={f.id} className={cn("flex items-center gap-3 rounded-xl border bg-card p-2.5", f.status === "suspended" ? "border-destructive" : "border-border")}>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-semibold">{f.title}</p>
+            <p className="truncate text-[11px] text-muted-foreground">
+              {f.profiles?.name ?? "—"} · {f.status}
+              {f.visibility === "reduced" && ` · ${t("admin_flashFlaggedNote")}`}
+            </p>
+          </div>
+          {f.status === "suspended" || f.status === "removed" ? (
+            <button onClick={() => handle(f.id, "active")} className="shrink-0 rounded-full border border-[color:var(--verified)] px-2.5 py-1 text-[11px] font-bold text-[color:var(--verified)]">
+              {t("admin_flashReactivate")}
+            </button>
+          ) : (
+            <button onClick={() => handle(f.id, "suspended")} className="shrink-0 rounded-full border border-destructive px-2.5 py-1 text-[11px] font-bold text-destructive">
+              {t("admin_flashSuspend")}
+            </button>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -781,6 +838,13 @@ function EconomyTab() {
     max_accounts_per_device_24h: t("admin_cfgMaxAccountsPerDevice"),
     home_featured_slots_per_day: t("admin_cfgHomeSlots"),
     boost_rank_bonus_cap: t("admin_cfgRankCap"),
+    flash_price_24h: t("admin_cfgFlash24h"),
+    flash_price_48h: t("admin_cfgFlash48h"),
+    flash_price_7d: t("admin_cfgFlash7d"),
+    flash_free_duration_hours: t("admin_cfgFlashFreeDuration"),
+    flash_report_alert_threshold: t("admin_cfgFlashAlertThreshold"),
+    flash_report_reduce_threshold: t("admin_cfgFlashReduceThreshold"),
+    flash_report_suspend_threshold: t("admin_cfgFlashSuspendThreshold"),
   };
 
   return (
