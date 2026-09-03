@@ -26,6 +26,7 @@ export type Profile = {
   is_admin: boolean;
   is_blocked: boolean;
   created_at: string;
+  welcome_bonus_status?: "pending" | "granted" | "expired" | "used_marker";
 };
 
 type AuthContextValue = {

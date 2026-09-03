@@ -47,7 +47,7 @@ export function useShopRatingsMap(shopIds: string[]) {
 // Ensemble des cibles (produits ou boutiques) actuellement boostées pour
 // un type de boost précis — utilisé pour l'encart "mis en avant" et le
 // bonus de rang plafonné (jamais un réordonnancement libre).
-export function useActiveBoostIds(targetType: "product" | "shop", boostType: string) {
+export function useActiveBoostIds(targetType: "product" | "shop" | "flash_listing", boostType: string) {
   return useQuery({
     queryKey: ["active-boost-ids", targetType, boostType],
     queryFn: async () => {
@@ -332,7 +332,7 @@ export function useBoostCatalog() {
 
 // Boosts actuellement actifs pour une cible précise (affichage du/des
 // badge(s) "sponsorisé" sur sa fiche, cumul de plusieurs types possible).
-export function useActiveBoosts(targetType: "product" | "shop", targetId: string | undefined) {
+export function useActiveBoosts(targetType: "product" | "shop" | "flash_listing", targetId: string | undefined) {
   return useQuery({
     queryKey: ["active-boosts", targetType, targetId],
     enabled: !!targetId,
@@ -347,7 +347,7 @@ export function useActiveBoosts(targetType: "product" | "shop", targetId: string
 export function usePurchaseBoost() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { targetType: "product" | "shop"; targetId: string; boostCatalogId: string }) => {
+    mutationFn: async (input: { targetType: "product" | "shop" | "flash_listing"; targetId: string; boostCatalogId: string }) => {
       const { data, error } = await supabase.rpc("purchase_boost", {
         p_target_type: input.targetType,
         p_target_id: input.targetId,
@@ -437,6 +437,125 @@ export function useBoostProduct() {
 export function useBoostShop() {
   const purchase = usePurchaseBoost();
   return { ...purchase, mutateAsync: (shopId: string) => purchase.mutateAsync({ targetType: "shop", targetId: shopId, boostCatalogId: "shop_3d" }) };
+}
+
+// ============ VENTE FLASH ============
+// Troisième mode de vente : ponctuel, sans boutique, jamais rattaché à
+// `shops`/`products`. Toute mutation (publier, prolonger, marquer vendu,
+// retirer) passe par une fonction RPC dédiée — voir 0016_flash_listings.sql.
+
+export function useFlashListings() {
+  return useQuery({
+    queryKey: ["flash-listings"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("flash_listings")
+        .select("*, profiles(id, name, avatar_url)")
+        .eq("status", "active")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+export function useFlashListing(id: string | undefined) {
+  return useQuery({
+    queryKey: ["flash-listing", id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("flash_listings").select("*, profiles(id, name, avatar_url, phone)").eq("id", id).single();
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+export function useMyFlashListings() {
+  const { session } = useAuth();
+  return useQuery({
+    queryKey: ["my-flash-listings", session?.user?.id],
+    enabled: !!session?.user?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("flash_listings")
+        .select("*")
+        .eq("seller_id", session!.user.id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+export function usePublishFlashListing() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      title: string;
+      description: string;
+      category: string;
+      condition: string | null;
+      price_xaf: number;
+      negotiable: boolean;
+      images: string[];
+      city: string;
+      neighborhood: string;
+      landmark: string;
+      duration_hours: number;
+    }) => {
+      const { data, error } = await supabase.rpc("publish_flash_listing", {
+        p_title: input.title,
+        p_description: input.description || null,
+        p_category: input.category,
+        p_condition: input.condition,
+        p_price_xaf: input.price_xaf,
+        p_negotiable: input.negotiable,
+        p_images: input.images,
+        p_city: input.city,
+        p_neighborhood: input.neighborhood,
+        p_landmark: input.landmark || null,
+        p_duration_hours: input.duration_hours,
+      });
+      if (error) throw error;
+      return data as string;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["flash-listings"] });
+      qc.invalidateQueries({ queryKey: ["my-flash-listings"] });
+      qc.invalidateQueries({ queryKey: ["my-profile"] });
+    },
+  });
+}
+
+export function useExtendFlashListing() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { flashId: string; extraHours: number }) => {
+      const { error } = await supabase.rpc("extend_flash_listing", { p_flash_id: input.flashId, p_extra_hours: input.extraHours });
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["flash-listing", vars.flashId] });
+      qc.invalidateQueries({ queryKey: ["my-flash-listings"] });
+      qc.invalidateQueries({ queryKey: ["flash-listings"] });
+    },
+  });
+}
+
+export function useMarkFlashStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { flashId: string; status: "sold" | "removed" }) => {
+      const { error } = await supabase.rpc("mark_flash_status", { p_flash_id: input.flashId, p_status: input.status });
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["flash-listing", vars.flashId] });
+      qc.invalidateQueries({ queryKey: ["my-flash-listings"] });
+      qc.invalidateQueries({ queryKey: ["flash-listings"] });
+    },
+  });
 }
 
 // ============ POSTS (feed) ============
@@ -915,6 +1034,33 @@ export function useAdminDeleteProduct() {
   });
 }
 
+// ============ ADMIN — VENTE FLASH ============
+export function useAdminFlashListings() {
+  return useQuery({
+    queryKey: ["admin-flash-listings"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("flash_listings")
+        .select("*, profiles(name, phone)")
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+export function useAdminSetFlashStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { flashId: string; status: "active" | "removed" | "suspended" }) => {
+      const { error } = await supabase.rpc("admin_set_flash_status", { p_flash_id: input.flashId, p_status: input.status });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-flash-listings"] }),
+  });
+}
+
 export function useAdminUsers() {
   return useQuery({
     queryKey: ["admin-users"],
@@ -982,7 +1128,7 @@ export function useReports() {
 export function useCreateReport() {
   const { session } = useAuth();
   return useMutation({
-    mutationFn: async (input: { targetType: "shop" | "product" | "post" | "user"; targetId: string; reason: string }) => {
+    mutationFn: async (input: { targetType: "shop" | "product" | "post" | "user" | "flash_listing"; targetId: string; reason: string }) => {
       const { error } = await supabase.from("reports").insert({
         reporter_id: session!.user.id,
         target_type: input.targetType,
@@ -1121,7 +1267,7 @@ export function useMarkConversationRead() {
 }
 
 // ============ UPLOAD D'IMAGES ============
-export async function uploadImage(bucket: "shop-logos" | "product-images" | "avatars" | "post-images", userId: string, file: File) {
+export async function uploadImage(bucket: "shop-logos" | "product-images" | "avatars" | "post-images" | "flash-images", userId: string, file: File) {
   const ext = file.name.split(".").pop();
   const path = `${userId}/${crypto.randomUUID()}.${ext}`;
   const { error } = await supabase.storage.from(bucket).upload(path, file, { upsert: false });
@@ -1130,7 +1276,7 @@ export async function uploadImage(bucket: "shop-logos" | "product-images" | "ava
   return data.publicUrl;
 }
 
-export async function uploadImages(bucket: "shop-logos" | "product-images" | "avatars" | "post-images", userId: string, files: File[]) {
+export async function uploadImages(bucket: "shop-logos" | "product-images" | "avatars" | "post-images" | "flash-images", userId: string, files: File[]) {
   const urls: string[] = [];
   for (const f of files) {
     urls.push(await uploadImage(bucket, userId, f));
@@ -1141,7 +1287,7 @@ export async function uploadImages(bucket: "shop-logos" | "product-images" | "av
 // ============ VUES (réelles, avec historique horodaté) ============
 const seenThisSession = new Set<string>();
 
-export function useRecordView(targetType: "product" | "shop", targetId: string | undefined) {
+export function useRecordView(targetType: "product" | "shop" | "flash_listing", targetId: string | undefined) {
   useEffect(() => {
     if (!targetId) return;
     const key = `${targetType}:${targetId}`;
@@ -1151,7 +1297,7 @@ export function useRecordView(targetType: "product" | "shop", targetId: string |
   }, [targetType, targetId]);
 }
 
-export function useViewsCount(targetType: "product" | "shop", targetId: string | undefined) {
+export function useViewsCount(targetType: "product" | "shop" | "flash_listing", targetId: string | undefined) {
   return useQuery({
     queryKey: ["views-count", targetType, targetId],
     enabled: !!targetId,
