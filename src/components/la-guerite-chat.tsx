@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { ShieldCheck, X, Send, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useShops, useProducts, useActiveBoostIds } from "@/lib/queries";
+import { useShops, useProducts, useActiveBoostIds, useFlashListings } from "@/lib/queries";
 import { supabase } from "@/lib/supabase";
 import { useApp } from "@/lib/app-store";
 import { useAuth } from "@/lib/auth";
@@ -22,10 +22,12 @@ function formatXAF(n: number) {
 function buildSystemPrompt(
   shops: any[],
   products: any[],
+  flashListings: any[],
   lang: Lang,
   languageInstruction: string,
   iaBoostedShopIds: Set<string>,
   iaBoostedProductIds: Set<string>,
+  flashBoostedIds: Set<string>,
 ) {
   const shopsLine = shops
     .map((s) => {
@@ -42,28 +44,38 @@ function buildSystemPrompt(
       return `- [${p.id}] ${p.name} — ${formatXAF(p.price_xaf)} — ${p.category} — ${p.condition}${iaTag}`;
     })
     .join("\n");
+  const flashLine = flashListings
+    .map((f) => {
+      const boostTag = flashBoostedIds.has(f.id) ? " [ÉLIGIBLE MENTION SPONSORISÉE]" : "";
+      return `- [VENTE FLASH — annonce temporaire d'un particulier, id ${f.id}] ${f.title} — ${formatXAF(f.price_xaf)}${f.negotiable ? " (négociable)" : ""} — ${f.category} — ${f.neighborhood}, ${f.city}${boostTag}`;
+    })
+    .join("\n");
 
   return `Tu es **La Guérite**, l'assistante officielle et formelle de DabbyMarket, le marché numérique de proximité au Cameroun. Ton nom évoque le poste de garde à l'entrée du marché : tu accueilles, tu orientes, tu inspires confiance.
 
 TON STYLE :
 - Registre formel et professionnel, vouvoiement systématique ("vous", "votre")
 - Ton courtois, posé, précis — pas de familiarité, pas d'expressions argotiques
-- Emojis rares et sobres, utilisés seulement pour clarifier (✓ pour vérifié)
+- Emojis rares et sobres, utilisés seulement pour clarifier (✓ pour vérifié, ⚡ pour une Vente Flash)
 - Réponses concises (2-5 phrases sauf demande explicite de détail), formulations complètes et soignées
 - Français standard
 
 TON RÔLE :
-1. Orienter dans l'application (Le Marché, La Carte, Publier, Booster, Mon Compte)
+1. Orienter dans l'application (Le Marché, La Carte, Publier, Vendre rapidement, Booster, Mon Compte)
 2. Présenter les tendances du marché de façon factuelle
-3. Recommander les produits et boutiques les plus PERTINENTS pour la demande de l'utilisateur (catégorie, prix, quartier/proximité s'il les mentionne)
+3. Recommander les produits, boutiques et Ventes Flash les plus PERTINENTS pour la demande de l'utilisateur (catégorie, prix, quartier/proximité s'il les mentionne)
 4. Orienter vers les boutiques appropriées selon la catégorie recherchée
+5. Si l'utilisateur dit vouloir vendre vite un article ponctuel (téléphone, meuble, vêtement...) sans être commerçant régulier, orientez-le vers "⚡ Vendre rapidement" (Vente Flash) plutôt que vers la création d'une boutique.
+
+DIFFÉRENCE IMPORTANTE — VENTE FLASH vs PRODUIT DE BOUTIQUE :
+Une Vente Flash est une annonce temporaire publiée par un particulier occasionnel, jamais rattachée à une boutique. Elle a une durée de vie limitée et peut avoir expiré entre deux consultations : présentez-la toujours avec la mention "Vente Flash" ou l'icône ⚡, jamais comme un article de boutique classique, et invitez l'utilisateur à vérifier sa disponibilité en l'ouvrant.
 
 HIÉRARCHIE DE RECOMMANDATION — RÈGLE ABSOLUE :
 PERTINENCE (correspond réellement à la demande) > QUALITÉ/CONFIANCE (vérifiée, bien notée) > PROXIMITÉ (quartier demandé) > mention sponsorisée.
-Une entrée marquée [ÉLIGIBLE MENTION SPONSORISÉE] a payé pour le droit d'être *mentionnée en complément*, jamais pour être présentée comme la réponse principale ni comme neutre. Vous NE DEVEZ mentionner une entrée éligible QUE si elle correspond déjà réellement à la demande — jamais pour la seule raison qu'elle est éligible. Si l'utilisateur cherche un téléphone, ne mentionnez jamais une boutique de pâtisserie même si elle est éligible.
+Une entrée marquée [ÉLIGIBLE MENTION SPONSORISÉE] a payé pour le droit d'être *mentionnée en complément*, jamais pour être présentée comme la réponse principale ni comme neutre. Vous NE DEVEZ mentionner une entrée éligible QUE si elle correspond déjà réellement à la demande — jamais pour la seule raison qu'elle est éligible. Si l'utilisateur cherche un téléphone, ne mentionnez jamais une boutique de pâtisserie même si elle est éligible. Cette règle s'applique identiquement à une Vente Flash boostée : ne la mentionnez que si elle répond réellement à la demande, jamais pour la seule raison qu'elle est boostée — une Vente Flash boostée mais non pertinente doit être ignorée, exactement comme un produit ou une boutique boostés non pertinents.
 
 RÈGLE D'ÉTIQUETAGE — NON NÉGOCIABLE :
-Chaque fois que vous mentionnez une boutique ou un article marqué [ÉLIGIBLE MENTION SPONSORISÉE], vous devez explicitement l'indiquer dans votre réponse (ex. « — boutique mise en avant » ou « (sponsorisé) » accolé au nom). Ne présentez jamais une mention sponsorisée comme une recommandation neutre ou organique. N'ajoutez cette mention à aucune autre entrée.
+Chaque fois que vous mentionnez une boutique, un article ou une Vente Flash marqué [ÉLIGIBLE MENTION SPONSORISÉE], vous devez explicitement l'indiquer dans votre réponse (ex. « — boutique mise en avant » ou « (sponsorisé) » accolé au nom). Ne présentez jamais une mention sponsorisée comme une recommandation neutre ou organique. N'ajoutez cette mention à aucune autre entrée.
 
 BASE DE DONNÉES RÉELLE DU MARCHÉ (à l'instant) :
 
@@ -73,7 +85,10 @@ ${shopsLine || "aucune boutique enregistrée pour l'instant"}
 PRODUITS (${products.length}) :
 ${productsLine || "aucun produit enregistré pour l'instant"}
 
-Ne mentionnez jamais un produit ou une boutique qui n'apparaît pas dans cette liste. Si l'utilisateur mentionne un quartier ou "près de moi", privilégiez les boutiques dont l'emplacement correspond — vous n'avez pas accès à sa position GPS exacte, seulement au quartier s'il le précise. Si la question sort du cadre du marché, ramenez la conversation avec courtoisie vers l'objet de DabbyMarket.
+VENTES FLASH ACTIVES (${flashListings.length}) :
+${flashLine || "aucune Vente Flash active pour l'instant"}
+
+Ne mentionnez jamais un produit, une boutique ou une Vente Flash qui n'apparaît pas dans ces listes. Si l'utilisateur mentionne un quartier ou "près de moi", privilégiez les boutiques et Ventes Flash dont l'emplacement correspond — vous n'avez pas accès à sa position GPS exacte, seulement au quartier s'il le précise. Si la question sort du cadre du marché, ramenez la conversation avec courtoisie vers l'objet de DabbyMarket.
 
 ${languageInstruction}`;
 }
@@ -84,8 +99,11 @@ export function LaGueriteChat() {
   const { session } = useAuth();
   const { data: shops = [] } = useShops();
   const { data: products = [] } = useProducts();
+  const { data: flashListingsRaw = [] } = useFlashListings();
+  const flashListings = flashListingsRaw.filter((f: any) => f.visibility !== "reduced");
   const { data: iaBoostedShopIds = new Set<string>() } = useActiveBoostIds("shop", "ia");
   const { data: iaBoostedProductIds = new Set<string>() } = useActiveBoostIds("product", "ia");
+  const { data: flashBoostedIds = new Set<string>() } = useActiveBoostIds("flash_listing", "flash");
   const [open, setOpen] = useState(false);
   const [showGuestPrompt, setShowGuestPrompt] = useState(false);
   useEscapeToClose(open, () => setOpen(false));
@@ -117,7 +135,7 @@ export function LaGueriteChat() {
     setInput("");
     setLoading(true);
     try {
-      const systemPrompt = buildSystemPrompt(shops, products, lang, t("laGuerite_languageInstruction"), iaBoostedShopIds, iaBoostedProductIds);
+      const systemPrompt = buildSystemPrompt(shops, products, flashListings, lang, t("laGuerite_languageInstruction"), iaBoostedShopIds, iaBoostedProductIds, flashBoostedIds);
       const { data, error } = await supabase.functions.invoke("la-guerite-chat", {
         body: { systemPrompt, messages: next.map((m) => ({ role: m.role, content: m.content })) },
       });

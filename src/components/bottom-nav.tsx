@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Store, MapPin, Plus, MessageCircle, User, Package, Image as ImageIcon, Sparkles, X } from "lucide-react";
+import { Store, MapPin, Plus, MessageCircle, User, Package, Image as ImageIcon, Sparkles, X, Zap } from "lucide-react";
 import { useState } from "react";
 import { useApp } from "@/lib/app-store";
 import { useEscapeToClose } from "@/hooks/use-escape-to-close";
@@ -29,6 +29,7 @@ export function BottomNav() {
       )}
       {open && (
         <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 space-y-2 rounded-2xl border border-border bg-card p-2 shadow-2xl">
+          <PublishAction to="/vendre-rapidement" icon={Zap} label={t("nav_venteFlash")} onClick={() => setOpen(false)} highlight />
           <PublishAction to="/publier" icon={Package} label={t("publier_title")} onClick={() => setOpen(false)} />
           <PublishAction to="/publier?type=post" icon={ImageIcon} label={t("publier_postTitle")} onClick={() => setOpen(false)} />
           <PublishAction to="/publier?type=vitrine" icon={Sparkles} label={t("publier_vitrineTitle")} onClick={() => setOpen(false)} />
@@ -110,19 +111,21 @@ function PublishAction({
   icon: Icon,
   label,
   onClick,
+  highlight,
 }: {
   to: string;
   icon: React.ComponentType<{ size?: number }>;
   label: string;
   onClick: () => void;
+  highlight?: boolean;
 }) {
   return (
     <Link
       to={to}
       onClick={onClick}
-      className="flex min-w-[220px] items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-accent"
+      className={cn("flex min-w-[220px] items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-accent", highlight && "gold-gradient hover:opacity-90")}
     >
-      <span className="grid h-9 w-9 place-items-center rounded-full bg-primary/15 text-primary">
+      <span className={cn("grid h-9 w-9 place-items-center rounded-full", highlight ? "bg-background/25" : "bg-primary/15 text-primary")}>
         <Icon size={18} />
       </span>
       <span className="text-sm font-semibold">{label}</span>

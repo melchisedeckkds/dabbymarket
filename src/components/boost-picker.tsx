@@ -8,7 +8,7 @@ import { Pepite } from "./pepite";
 import { cn } from "@/lib/utils";
 import { useEscapeToClose } from "@/hooks/use-escape-to-close";
 
-const TYPE_ICON: Record<string, any> = { article: Zap, shop: Store, carte: MapPinIcon, recherche: Search, ia: Sparkles, accueil: Star };
+const TYPE_ICON: Record<string, any> = { article: Zap, shop: Store, carte: MapPinIcon, recherche: Search, ia: Sparkles, accueil: Star, flash: Zap };
 const TYPE_LABEL_KEY: Record<string, string> = {
   article: "boost_typeArticle",
   shop: "boost_typeShop",
@@ -16,6 +16,7 @@ const TYPE_LABEL_KEY: Record<string, string> = {
   recherche: "boost_typeRecherche",
   ia: "boost_typeIA",
   accueil: "boost_typeAccueil",
+  flash: "boost_typeFlash",
 };
 
 /**
@@ -32,7 +33,7 @@ export function BoostPicker({
 }: {
   open: boolean;
   onClose: () => void;
-  targetType: "product" | "shop";
+  targetType: "product" | "shop" | "flash_listing";
   targetId: string;
 }) {
   const { t } = useApp();
@@ -45,7 +46,7 @@ export function BoostPicker({
 
   if (!open) return null;
 
-  const relevantTypes = targetType === "product" ? ["article", "recherche", "ia"] : ["shop", "carte", "recherche", "ia", "accueil"];
+  const relevantTypes = targetType === "product" ? ["article", "recherche", "ia"] : targetType === "flash_listing" ? ["flash"] : ["shop", "carte", "recherche", "ia", "accueil"];
   const groups = relevantTypes
     .map((type) => ({ type, options: catalog.filter((c: any) => c.boost_type === type) }))
     .filter((g) => g.options.length > 0);

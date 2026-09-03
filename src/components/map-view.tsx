@@ -15,6 +15,35 @@ export type ShopPin = {
   logo_url?: string | null;
 };
 
+export type FlashPin = {
+  id: string;
+  title: string;
+  lat: number;
+  lng: number;
+  thumbnail?: string | null;
+};
+
+function flashPin(pin: FlashPin, active: boolean) {
+  const scale = active ? 1.12 : 1;
+  const ring = active ? "#f2d675" : "#e8985e";
+  const inner = pin.thumbnail
+    ? `<img src="${pin.thumbnail}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
+    : `<span>⚡</span>`;
+  const html = `
+    <div class="dm-pin dm-pin--flash" style="transform:scale(${scale});">
+      <div class="dm-pin-body" style="background:#2a1f14;color:#f5f5f5;border-color:${ring};border-style:dashed;overflow:hidden;width:34px;height:34px;">
+        ${inner}
+      </div>
+      <div class="dm-pin-tail" style="border-top-color:${ring};"></div>
+    </div>`;
+  return L.divIcon({
+    className: "dm-pin-wrap",
+    html,
+    iconSize: [36, 44],
+    iconAnchor: [18, 42],
+  });
+}
+
 function shopPin(shop: ShopPin, active: boolean) {
   const ring = active ? "#f2d675" : shop.verified ? "#d4af37" : "#8a8a8a";
   const bg = active ? "linear-gradient(135deg,#d4af37,#f2d675)" : "#1e1e1e";
@@ -55,12 +84,14 @@ function userPin() {
 
 function FitToShops({
   shops,
+  flashPins,
   user,
   focus,
   countryCenter,
   routeActive,
 }: {
   shops: ShopPin[];
+  flashPins: FlashPin[];
   user: GeoPoint | null;
   focus: [number, number] | null;
   countryCenter: [number, number] | null;
@@ -78,7 +109,7 @@ function FitToShops({
     if (user) {
       // Position réelle activée : on recentre sur l'utilisateur + boutiques
       // proches (c'est ce qui permet de voir ce qui est près de chez soi).
-      const pts: [number, number][] = shops.map((s) => [s.lat, s.lng]);
+      const pts: [number, number][] = [...shops.map((s) => [s.lat, s.lng] as [number, number]), ...flashPins.map((f) => [f.lat, f.lng] as [number, number])];
       pts.push([user.lat, user.lng]);
       const b = L.latLngBounds(pts);
       map.fitBounds(b.pad(0.35), { animate: true });
@@ -92,11 +123,11 @@ function FitToShops({
       map.flyTo(countryCenter, 6, { duration: 1 });
       return;
     }
-    const pts: [number, number][] = shops.map((s) => [s.lat, s.lng]);
+    const pts: [number, number][] = [...shops.map((s) => [s.lat, s.lng] as [number, number]), ...flashPins.map((f) => [f.lat, f.lng] as [number, number])];
     if (!pts.length) return;
     const b = L.latLngBounds(pts);
     map.fitBounds(b.pad(0.35), { animate: true });
-  }, [shops, user, focus, map, countryCenter, routeActive]);
+  }, [shops, flashPins, user, focus, map, countryCenter, routeActive]);
   return null;
 }
 
@@ -136,8 +167,10 @@ function AreaSearchBridge({ onAreaChange }: { onAreaChange: (bounds: L.LatLngBou
 
 export default function MapView({
   shops,
+  flashPins = [],
   selectedId,
   onSelect,
+  onSelectFlash,
   user,
   theme = "dark",
   focus = null,
@@ -148,8 +181,10 @@ export default function MapView({
   routeApproximate,
 }: {
   shops: ShopPin[];
+  flashPins?: FlashPin[];
   selectedId: string | null;
   onSelect: (s: ShopPin) => void;
+  onSelectFlash?: (f: FlashPin) => void;
   user: GeoPoint | null;
   theme?: "dark" | "light";
   focus?: [number, number] | null;
@@ -178,7 +213,7 @@ export default function MapView({
       className="absolute inset-0 h-full w-full"
     >
       <TileLayer url={tileUrl} attribution="&copy; OpenStreetMap &copy; CARTO" />
-      <FitToShops shops={shops} user={user} focus={focus} countryCenter={countryCenter} routeActive={!!route?.length} />
+      <FitToShops shops={shops} flashPins={flashPins} user={user} focus={focus} countryCenter={countryCenter} routeActive={!!route?.length} />
       <MapClickHandler onMapClick={onMapClick} />
       {onAreaChange && <AreaSearchBridge onAreaChange={onAreaChange} />}
 
@@ -215,6 +250,15 @@ export default function MapView({
           position={[s.lat, s.lng]}
           icon={shopPin(s, selectedId === s.id)}
           eventHandlers={{ click: () => onSelect(s) }}
+        />
+      ))}
+
+      {flashPins.map((f) => (
+        <Marker
+          key={`flash-${f.id}`}
+          position={[f.lat, f.lng]}
+          icon={flashPin(f, selectedId === f.id)}
+          eventHandlers={{ click: () => onSelectFlash?.(f) }}
         />
       ))}
     </MapContainer>
