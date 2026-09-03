@@ -23,6 +23,8 @@ const BoutiquePage = lazy(() => import("@/pages/Boutique"));
 const ProduitPage = lazy(() => import("@/pages/Produit"));
 const CreerBoutiquePage = lazy(() => import("@/pages/CreerBoutique"));
 const PublierPage = lazy(() => import("@/pages/Publier"));
+const PublierFlashPage = lazy(() => import("@/pages/PublierFlash"));
+const FlashListingPage = lazy(() => import("@/pages/FlashListing"));
 const MessagesPage = lazy(() => import("@/pages/Messages"));
 const ComptePage = lazy(() => import("@/pages/Compte"));
 const AdminPage = lazy(() => import("@/pages/Admin"));
@@ -69,12 +71,14 @@ function AppRoutes() {
             <Route path="/carte" element={<CartePage />} />
             <Route path="/boutique/:id" element={<BoutiquePage />} />
             <Route path="/produit/:id" element={<ProduitPage />} />
+            <Route path="/flash/:id" element={<FlashListingPage />} />
             <Route path="/cgu" element={<CguPage />} />
             <Route path="/profil/:id" element={<ProfilPage />} />
 
             {/* Nécessitent un compte */}
             <Route path="/creer-boutique" element={<RequireAuth><CreerBoutiquePage /></RequireAuth>} />
             <Route path="/publier" element={<RequireAuth><PublierPage /></RequireAuth>} />
+            <Route path="/vendre-rapidement" element={<RequireAuth><PublierFlashPage /></RequireAuth>} />
             <Route path="/messages" element={<RequireAuth><MessagesPage /></RequireAuth>} />
             <Route path="/messages/:id" element={<RequireAuth><MessagesPage /></RequireAuth>} />
             <Route path="/compte" element={<RequireAuth><ComptePage /></RequireAuth>} />
