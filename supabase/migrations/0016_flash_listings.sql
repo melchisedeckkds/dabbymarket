@@ -60,6 +60,7 @@ alter table flash_listings enable row level security;
 -- Lecture : tout le monde voit les annonces actives et non expirées ;
 -- le vendeur voit toujours les siennes (y compris vendues/retirées) ;
 -- l'admin voit tout (modération).
+drop policy if exists "Ventes Flash visibles selon statut" on flash_listings;
 create policy "Ventes Flash visibles selon statut"
   on flash_listings for select
   using (
@@ -429,14 +430,17 @@ insert into storage.buckets (id, name, public)
 values ('flash-images', 'flash-images', true)
 on conflict (id) do nothing;
 
+drop policy if exists "Lecture publique des photos Vente Flash" on storage.objects;
 create policy "Lecture publique des photos Vente Flash"
   on storage.objects for select
   using (bucket_id = 'flash-images');
 
+drop policy if exists "Upload Vente Flash dans son propre dossier" on storage.objects;
 create policy "Upload Vente Flash dans son propre dossier"
   on storage.objects for insert
   with check (bucket_id = 'flash-images' and (storage.foldername(name))[1] = auth.uid()::text);
 
+drop policy if exists "Suppression de ses propres photos Vente Flash" on storage.objects;
 create policy "Suppression de ses propres photos Vente Flash"
   on storage.objects for delete
   using (bucket_id = 'flash-images' and (storage.foldername(name))[1] = auth.uid()::text);
