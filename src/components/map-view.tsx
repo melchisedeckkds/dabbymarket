@@ -196,13 +196,17 @@ export default function MapView({
   route?: [number, number][];
   routeApproximate?: boolean;
 }) {
-  const tileUrl = useMemo(
-    () =>
-      theme === "dark"
-        ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-        : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-    [theme],
-  );
+  // CARTO exige désormais une clé d'API sur ses fonds de carte gratuits
+  // (depuis fin août 2026 — sans lien avec DabbyMarket, ça touche tous les
+  // usages non-authentifiés de basemaps.cartocdn.com). La clé reste
+  // gratuite (5M requêtes/mois) : on l'ajoute si elle est configurée, et on
+  // dégrade proprement vers l'URL nue (filigrane visible mais carte
+  // fonctionnelle) sinon, plutôt que de casser le rendu.
+  const cartoKey = import.meta.env.VITE_CARTO_API_KEY as string | undefined;
+  const tileUrl = useMemo(() => {
+    const base = theme === "dark" ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
+    return cartoKey ? `${base}?key=${cartoKey}` : base;
+  }, [theme, cartoKey]);
 
   return (
     <MapContainer
