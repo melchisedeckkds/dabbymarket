@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { AppProvider } from "@/lib/app-store";
 import { Toaster } from "@/components/ui/sonner";
+import { NotificationWatcher } from "@/components/notification-center";
 import { LaGueriteChat } from "@/components/la-guerite-chat";
 import { OfflineBanner } from "@/components/offline-banner";
 import { OnboardingTour } from "@/components/onboarding-tour";
@@ -32,6 +33,8 @@ const RechargePage = lazy(() => import("@/pages/Recharge"));
 const SuggestionsPage = lazy(() => import("@/pages/Suggestions"));
 const CguPage = lazy(() => import("@/pages/Cgu"));
 const ProfilPage = lazy(() => import("@/pages/Profil"));
+const DisponibilitePage = lazy(() => import("@/pages/Disponibilite"));
+const NotificationsPage = lazy(() => import("@/pages/Notifications"));
 
 const queryClient = new QueryClient();
 
@@ -85,6 +88,8 @@ function AppRoutes() {
             <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
             <Route path="/recharge" element={<RequireAuth><RechargePage /></RequireAuth>} />
             <Route path="/suggestions" element={<RequireAuth><SuggestionsPage /></RequireAuth>} />
+            <Route path="/disponibilite" element={<RequireAuth><DisponibilitePage /></RequireAuth>} />
+            <Route path="/notifications" element={<RequireAuth><NotificationsPage /></RequireAuth>} />
 
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
@@ -97,7 +102,12 @@ function AppRoutes() {
 function AuthedExtras() {
   const { session } = useAuth();
   if (!session) return null;
-  return <OnboardingTour />;
+  return (
+    <>
+      <OnboardingTour />
+      <NotificationWatcher />
+    </>
+  );
 }
 
 export default function App() {
