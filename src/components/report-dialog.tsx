@@ -28,7 +28,7 @@ export function ReportDialog({
 }: {
   open: boolean;
   onClose: () => void;
-  targetType: "shop" | "product" | "post" | "user" | "flash_listing";
+  targetType: "shop" | "product" | "post" | "user" | "flash_listing" | "product_review";
   targetId: string;
 }) {
   const { t } = useApp();

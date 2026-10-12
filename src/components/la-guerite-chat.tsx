@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { ShieldCheck, X, Send, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useShops, useProducts, useActiveBoostIds, useFlashListings } from "@/lib/queries";
@@ -10,6 +10,8 @@ import { useEscapeToClose } from "@/hooks/use-escape-to-close";
 import { isOpenNow } from "@/lib/hours";
 import { GuestPrompt } from "./guest-prompt";
 import type { Lang } from "@/lib/i18n";
+import { useAvailabilityIndex } from "@/lib/availability-queries";
+import { formatAgo } from "@/lib/availability";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -28,6 +30,7 @@ function buildSystemPrompt(
   iaBoostedShopIds: Set<string>,
   iaBoostedProductIds: Set<string>,
   flashBoostedIds: Set<string>,
+  availIndex: Map<string, any> = new Map(),
 ) {
   const shopsLine = shops
     .map((s) => {
@@ -41,7 +44,15 @@ function buildSystemPrompt(
   const productsLine = products
     .map((p) => {
       const iaTag = iaBoostedProductIds.has(p.id) ? " [ÉLIGIBLE MENTION SPONSORISÉE]" : "";
-      return `- [${p.id}] ${p.name} — ${formatXAF(p.price_xaf)} — ${p.category} — ${p.condition}${iaTag}`;
+      // Disponibilité EFFECTIVE (calculée côté base : fraîcheur + signalements). Jamais déduite par le modèle.
+      const av = availIndex.get(p.id);
+      const labels: Record<string, string> = {
+        available: "DISPONIBLE (déclaré par la boutique)", limited: "STOCK LIMITÉ (déclaré par la boutique)",
+        to_reconfirm: "À RECONFIRMER (information ancienne, stock inconnu)", contested: "CONTESTÉE (plusieurs signalements d'épuisement)",
+        out: "EN RUPTURE (déclaré par la boutique)",
+      };
+      const availTag = av ? ` — DISPONIBILITÉ : ${labels[av.effective_status] ?? "inconnue"}, confirmée ${formatAgo(av.confirmed_at, "fr")}` : " — DISPONIBILITÉ : non renseignée";
+      return `- [${p.id}] ${p.name} — ${formatXAF(p.price_xaf)} — ${p.category} — ${p.condition}${availTag}${iaTag}`;
     })
     .join("\n");
   const flashLine = flashListings
@@ -77,6 +88,13 @@ Une entrée marquée [ÉLIGIBLE MENTION SPONSORISÉE] a payé pour le droit d'ê
 RÈGLE D'ÉTIQUETAGE — NON NÉGOCIABLE :
 Chaque fois que vous mentionnez une boutique, un article ou une Vente Flash marqué [ÉLIGIBLE MENTION SPONSORISÉE], vous devez explicitement l'indiquer dans votre réponse (ex. « — boutique mise en avant » ou « (sponsorisé) » accolé au nom). Ne présentez jamais une mention sponsorisée comme une recommandation neutre ou organique. N'ajoutez cette mention à aucune autre entrée.
 
+DISPONIBILITÉ DES PRODUITS — RÈGLES ABSOLUES :
+- Chaque produit porte une mention « DISPONIBILITÉ ». Vous ne pouvez affirmer qu'un produit est disponible QUE s'il est marqué DISPONIBLE ou STOCK LIMITÉ ; indiquez toujours « déclaré par la boutique » et la fraîcheur (« confirmé il y a … »).
+- Pour À RECONFIRMER ou CONTESTÉE : dites clairement que l'information est ancienne ou contestée et invitez à confirmer avec la boutique avant de se déplacer. Ne dites JAMAIS qu'un produit est en rupture sauf s'il est marqué EN RUPTURE.
+- Pour « non renseignée » : dites que la boutique n'a pas indiqué sa disponibilité. N'inventez JAMAIS un stock, un prix ou une quantité.
+- La disponibilité n'est pas une réservation. Si aucun produit ne correspond, dites-le et suggérez de créer une alerte depuis la Carte (« M'avertir quand il sera disponible »).
+- Pour orienter l'utilisateur, vous pouvez insérer des liens internes au format [texte](/boutique/ID_BOUTIQUE), [texte](/produit/ID_PRODUIT) ou [texte](/carte?q=recherche) — uniquement avec des identifiants présents dans les listes ci-dessous.
+
 BASE DE DONNÉES RÉELLE DU MARCHÉ (à l'instant) :
 
 BOUTIQUES (${shops.length}) :
@@ -99,6 +117,7 @@ export function LaGueriteChat() {
   const { session } = useAuth();
   const { data: shops = [] } = useShops();
   const { data: products = [] } = useProducts();
+  const { data: availIndex = new Map<string, any>() } = useAvailabilityIndex();
   const { data: flashListingsRaw = [] } = useFlashListings();
   const flashListings = flashListingsRaw.filter((f: any) => f.visibility !== "reduced");
   const { data: iaBoostedShopIds = new Set<string>() } = useActiveBoostIds("shop", "ia");
@@ -135,7 +154,7 @@ export function LaGueriteChat() {
     setInput("");
     setLoading(true);
     try {
-      const systemPrompt = buildSystemPrompt(shops, products, flashListings, lang, t("laGuerite_languageInstruction"), iaBoostedShopIds, iaBoostedProductIds, flashBoostedIds);
+      const systemPrompt = buildSystemPrompt(shops, products, flashListings, lang, t("laGuerite_languageInstruction"), iaBoostedShopIds, iaBoostedProductIds, flashBoostedIds, availIndex);
       const { data, error } = await supabase.functions.invoke("la-guerite-chat", {
         body: { systemPrompt, messages: next.map((m) => ({ role: m.role, content: m.content })) },
       });
@@ -261,8 +280,18 @@ function Bubble({ m }: { m: Msg }) {
 }
 
 function renderMarkdownLite(text: string) {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
-  return parts.map((p, i) =>
-    p.startsWith("**") && p.endsWith("**") ? <strong key={i}>{p.slice(2, -2)}</strong> : <span key={i}>{p}</span>,
-  );
+  // Gras **...** et liens INTERNES [texte](/chemin) uniquement : tout lien externe est affiché en texte brut.
+  const parts = text.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\(\/[^)\s]*\))/g);
+  return parts.map((p, i) => {
+    if (p.startsWith("**") && p.endsWith("**")) return <strong key={i}>{p.slice(2, -2)}</strong>;
+    const m = p.match(/^\[([^\]]+)\]\((\/[^)\s]*)\)$/);
+    if (m && !m[2].startsWith("//")) {
+      return (
+        <Link key={i} to={m[2]} className="font-semibold text-primary underline underline-offset-2">
+          {m[1]}
+        </Link>
+      );
+    }
+    return <span key={i}>{p}</span>;
+  });
 }

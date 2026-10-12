@@ -1,6 +1,7 @@
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents, CircleMarker, Polyline } from "react-leaflet";
 import L from "leaflet";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { STATUS_COLOR, escapeHtml, safeImageUrl, formatXAF, type EffectiveStatus } from "@/lib/availability";
 
 export type GeoPoint = { lat: number; lng: number; accuracy?: number };
 
@@ -13,6 +14,17 @@ export type ShopPin = {
   lat: number;
   lng: number;
   logo_url?: string | null;
+  /** Dabby Disponibilité : produit le plus pertinent de la boutique (jamais affirmatif si périmé/contesté). */
+  availability?: {
+    status: EffectiveStatus;
+    productName: string;
+    price: number;
+    rating?: number | null;
+    ago: string;
+    /** rang de pertinence (0 = meilleur) : sert à arbitrer les bulles quand la carte est chargée */
+    rank: number;
+    statusLabel: string;
+  };
 };
 
 export type FlashPin = {
@@ -23,11 +35,25 @@ export type FlashPin = {
   thumbnail?: string | null;
 };
 
+// Cache d'icônes : évite de recréer (et de ré-injecter dans le DOM) l'icône
+// de chaque marqueur à chaque rendu quand son HTML n'a pas changé.
+const iconCache = new Map<string, L.DivIcon>();
+function cachedIcon(html: string, size: [number, number], anchor: [number, number]): L.DivIcon {
+  const key = `${size.join("x")}|${html}`;
+  let icon = iconCache.get(key);
+  if (!icon) {
+    if (iconCache.size > 800) iconCache.clear();
+    icon = L.divIcon({ className: "dm-pin-wrap", html, iconSize: size, iconAnchor: anchor });
+    iconCache.set(key, icon);
+  }
+  return icon;
+}
+
 function flashPin(pin: FlashPin, active: boolean) {
   const scale = active ? 1.12 : 1;
   const ring = active ? "#f2d675" : "#e8985e";
   const inner = pin.thumbnail
-    ? `<img src="${pin.thumbnail}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
+    ? `<img src="${safeImageUrl(pin.thumbnail)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
     : `<span>⚡</span>`;
   const html = `
     <div class="dm-pin dm-pin--flash" style="transform:scale(${scale});">
@@ -36,36 +62,44 @@ function flashPin(pin: FlashPin, active: boolean) {
       </div>
       <div class="dm-pin-tail" style="border-top-color:${ring};"></div>
     </div>`;
-  return L.divIcon({
-    className: "dm-pin-wrap",
-    html,
-    iconSize: [36, 44],
-    iconAnchor: [18, 42],
-  });
+  return cachedIcon(html, [36, 44], [18, 42]);
 }
 
-function shopPin(shop: ShopPin, active: boolean) {
+function shopPin(shop: ShopPin, active: boolean, showCallout: boolean) {
   const ring = active ? "#f2d675" : shop.verified ? "#d4af37" : "#8a8a8a";
   const bg = active ? "linear-gradient(135deg,#d4af37,#f2d675)" : "#1e1e1e";
   const color = active ? "#121212" : "#f5f5f5";
   const scale = active ? 1.1 : 1;
-  const inner = shop.logo_url
-    ? `<img src="${shop.logo_url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
-    : `<span>${shop.name.charAt(0).toUpperCase()}</span>`;
+  // Les données utilisateur (nom, logo, produit) sont TOUJOURS échappées
+  // avant d'être injectées dans le HTML du marqueur.
+  const logo = safeImageUrl(shop.logo_url);
+  const inner = logo
+    ? `<img src="${logo}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
+    : `<span>${escapeHtml(shop.name.charAt(0).toUpperCase())}</span>`;
+  const av = shop.availability;
+  const dot = av ? `<span class="dm-pin-status" style="background:${STATUS_COLOR[av.status]};"></span>` : "";
+  const callout =
+    av && (showCallout || active)
+      ? `<div class="dm-callout" style="border-color:${STATUS_COLOR[av.status]}99;">
+           <span class="dm-callout-dot" style="background:${STATUS_COLOR[av.status]};"></span>
+           <span class="dm-callout-text">
+             <b>${escapeHtml(av.productName)}</b>
+             <i>${escapeHtml(av.statusLabel)} · ${escapeHtml(formatXAF(av.price))}${av.rating ? ` · ⭐ ${Number(av.rating).toFixed(1)}` : ""}</i>
+             <em>${escapeHtml(av.ago)}</em>
+           </span>
+         </div>`
+      : "";
   const html = `
     <div class="dm-pin" style="transform:scale(${scale});">
+      ${callout}
       <div class="dm-pin-body" style="background:${bg};color:${color};border-color:${ring};overflow:hidden;">
         ${inner}
       </div>
+      ${dot}
       <div class="dm-pin-tail" style="border-top-color:${ring};"></div>
       ${active ? '<div class="dm-pin-pulse"></div>' : ""}
     </div>`;
-  return L.divIcon({
-    className: "dm-pin-wrap",
-    html,
-    iconSize: [46, 56],
-    iconAnchor: [23, 54],
-  });
+  return cachedIcon(html, [46, 56], [23, 54]);
 }
 
 function userPin() {
@@ -165,6 +199,40 @@ function AreaSearchBridge({ onAreaChange }: { onAreaChange: (bounds: L.LatLngBou
   return null;
 }
 
+// Choisit quelles boutiques affichent leur bulle de produit : uniquement
+// à partir d'un certain zoom, une seule bulle par cellule d'écran, plafond
+// de bulles, par ordre de pertinence — pour que la carte reste lisible et
+// fluide avec beaucoup de boutiques rapprochées.
+const CALLOUT_MIN_ZOOM = 14;
+const CALLOUT_MAX = 14;
+const CELL_W = 150;
+const CELL_H = 64;
+
+function CalloutPlanner({ shops, onPlan }: { shops: ShopPin[]; onPlan: (ids: Set<string>) => void }) {
+  const map = useMap();
+  const compute = () => {
+    if (map.getZoom() < CALLOUT_MIN_ZOOM) return onPlan(new Set());
+    const bounds = map.getBounds().pad(0.05);
+    const candidates = shops
+      .filter((s) => s.availability && bounds.contains([s.lat, s.lng]))
+      .sort((a, b) => a.availability!.rank - b.availability!.rank);
+    const taken = new Set<string>();
+    const chosen = new Set<string>();
+    for (const s of candidates) {
+      if (chosen.size >= CALLOUT_MAX) break;
+      const pt = map.latLngToContainerPoint([s.lat, s.lng]);
+      const cell = `${Math.floor(pt.x / CELL_W)}:${Math.floor(pt.y / CELL_H)}`;
+      if (taken.has(cell)) continue;
+      taken.add(cell);
+      chosen.add(s.locationId ?? s.id);
+    }
+    onPlan(chosen);
+  };
+  useEffect(compute, [shops, map]); // eslint-disable-line react-hooks/exhaustive-deps
+  useMapEvents({ zoomend: compute, moveend: compute });
+  return null;
+}
+
 export default function MapView({
   shops,
   flashPins = [],
@@ -202,6 +270,7 @@ export default function MapView({
   // gratuite (5M requêtes/mois) : on l'ajoute si elle est configurée, et on
   // dégrade proprement vers l'URL nue (filigrane visible mais carte
   // fonctionnelle) sinon, plutôt que de casser le rendu.
+  const [calloutIds, setCalloutIds] = useState<Set<string>>(new Set());
   const cartoKey = import.meta.env.VITE_CARTO_API_KEY as string | undefined;
   const tileUrl = useMemo(() => {
     const base = theme === "dark" ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
@@ -219,6 +288,7 @@ export default function MapView({
       <TileLayer url={tileUrl} attribution="&copy; OpenStreetMap &copy; CARTO" />
       <FitToShops shops={shops} flashPins={flashPins} user={user} focus={focus} countryCenter={countryCenter} routeActive={!!route?.length} />
       <MapClickHandler onMapClick={onMapClick} />
+      <CalloutPlanner shops={shops} onPlan={setCalloutIds} />
       {onAreaChange && <AreaSearchBridge onAreaChange={onAreaChange} />}
 
       {route && route.length > 1 && (
@@ -252,7 +322,8 @@ export default function MapView({
         <Marker
           key={s.locationId ?? s.id}
           position={[s.lat, s.lng]}
-          icon={shopPin(s, selectedId === s.id)}
+          icon={shopPin(s, selectedId === s.id, calloutIds.has(s.locationId ?? s.id))}
+          zIndexOffset={selectedId === s.id ? 1000 : calloutIds.has(s.locationId ?? s.id) ? 500 : 0}
           eventHandlers={{ click: () => onSelect(s) }}
         />
       ))}

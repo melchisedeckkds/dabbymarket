@@ -1,9 +1,10 @@
 import { Link } from "react-router-dom";
-import { Bell } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useApp } from "@/lib/app-store";
 import { Pepite } from "./pepite";
 import { Logo } from "./logo";
+import { NotificationBell } from "./notification-center";
 
 export function TopBar() {
   const { profile } = useAuth();
@@ -25,12 +26,13 @@ export function TopBar() {
           <Pepite size={18} />
           <span>{profile?.pepites_balance ?? 0}</span>
         </Link>
+        <NotificationBell />
         <Link
           to="/messages"
           className="relative grid h-9 w-9 place-items-center rounded-full bg-card text-foreground transition-colors hover:bg-accent"
           aria-label={`${t("nav_messages")} (${unreadCount})`}
         >
-          <Bell size={18} />
+          <MessageCircle size={18} />
           {unreadCount > 0 && (
             <span className="absolute -right-0.5 -top-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground ring-2 ring-background animate-pop">
               {unreadCount > 9 ? "9+" : unreadCount}
