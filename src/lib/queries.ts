@@ -1128,7 +1128,7 @@ export function useReports() {
 export function useCreateReport() {
   const { session } = useAuth();
   return useMutation({
-    mutationFn: async (input: { targetType: "shop" | "product" | "post" | "user" | "flash_listing"; targetId: string; reason: string }) => {
+    mutationFn: async (input: { targetType: "shop" | "product" | "post" | "user" | "flash_listing" | "product_review"; targetId: string; reason: string }) => {
       const { error } = await supabase.from("reports").insert({
         reporter_id: session!.user.id,
         target_type: input.targetType,
