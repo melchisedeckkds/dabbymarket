@@ -7,7 +7,7 @@ import { PhotoPicker, type PickedPhoto } from "@/components/photo-picker";
 import { Pepite } from "@/components/pepite";
 import { hapticSuccess } from "@/lib/haptics";
 import { useApp } from "@/lib/app-store";
-import { CATEGORIES } from "@/lib/categories";
+import { useCreationCategories } from "@/lib/availability-queries";
 import { CITIES, neighborhoodsFor } from "@/lib/neighborhoods";
 import { FLASH_DURATIONS, FLASH_CONDITIONS, FLASH_CONDITION_LABEL_KEYS, CATEGORIES_WITHOUT_CONDITION, type FlashDurationHours, type FlashCondition } from "@/lib/flash";
 import { ArrowLeft, Loader2, ShieldCheck, Zap } from "lucide-react";
@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 export default function PublierFlashPage() {
   const { session, profile } = useAuth();
   const { t } = useApp();
+  const creationCategories = useCreationCategories();
   const navigate = useNavigate();
   const publish = usePublishFlashListing();
   const { data: config } = useAppConfig();
@@ -127,9 +128,9 @@ export default function PublierFlashPage() {
 
         <Field label={t("flash_category")}>
           <select value={category} onChange={(e) => setCategory(e.target.value)} className="input">
-            {CATEGORIES.map((c) => (
+            {creationCategories.map((c) => (
               <option key={c.id} value={c.id}>
-                {t(c.key)}
+                {c.label}
               </option>
             ))}
           </select>

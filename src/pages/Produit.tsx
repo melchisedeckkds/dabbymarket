@@ -19,6 +19,13 @@ import { BottomNav } from "@/components/bottom-nav";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { Pepite } from "@/components/pepite";
 import { useApp } from "@/lib/app-store";
+import { AvailabilityBadge, AvailabilityHint, FreshnessText } from "@/components/availability-badge";
+import { AvailabilityReportSheet } from "@/components/availability-report-sheet";
+import { ProductAlertButton } from "@/components/alert-button";
+import { ProductReviews } from "@/components/product-reviews";
+import { useDt } from "@/lib/availability-i18n";
+import { useProductAvailability } from "@/lib/availability-queries";
+import { isAffirmative } from "@/lib/availability";
 import { cn } from "@/lib/utils";
 
 function formatXAF(n: number) {
@@ -44,6 +51,9 @@ export default function ProduitPage() {
   const { data: viewsCount = 0 } = useViewsCount("product", id);
   const [imgIndex, setImgIndex] = useState(0);
   const [showGuestPrompt, setShowGuestPrompt] = useState(false);
+  const dt = useDt();
+  const { data: avail } = useProductAvailability(id);
+  const [showReport, setShowReport] = useState(false);
 
   if (isLoading) {
     return <ProductDetailSkeleton />;
@@ -159,6 +169,30 @@ export default function ProduitPage() {
           </div>
         </div>
 
+        {avail && avail.declared_status !== "unknown" && (
+          <section className="space-y-2 rounded-2xl border border-border bg-card p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <AvailabilityBadge status={avail.effective_status} className="text-xs" />
+              {isAffirmative(avail.effective_status) && avail.stock_qty ? (
+                <span className="text-[11px] text-muted-foreground">~{avail.stock_qty} {dt("c_unit")}</span>
+              ) : null}
+            </div>
+            <FreshnessText confirmedAt={avail.confirmed_at} status={avail.effective_status} className="block" />
+            {avail.found_reports > 0 && avail.effective_status !== "out" && (
+              <p className="text-[11px] text-[color:var(--verified)]">{dt("st_community_found")}</p>
+            )}
+            {avail.sale_conditions && <p className="text-xs text-muted-foreground">{avail.sale_conditions}</p>}
+            <AvailabilityHint status={avail.effective_status} />
+            <p className="text-[10px] text-muted-foreground">{dt("st_not_a_reservation")}</p>
+            {session?.user?.id !== shop.owner_id && (
+              <div className="flex gap-2">
+                {!isAffirmative(avail.effective_status) || avail.effective_status === "contested" ? <ProductAlertButton productId={product.id} className="flex-1" /> : null}
+                <button onClick={() => setShowReport(true)} className="flex-1 rounded-xl border border-border py-2 text-xs font-semibold">{dt("rep_title")}</button>
+              </div>
+            )}
+          </section>
+        )}
+
         <Link to={`/boutique/${shop.id}`} className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3 transition-colors hover:bg-accent">
           <div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl bg-accent text-xl">
             {shop.logo_url ? <img src={shop.logo_url} alt="" className="h-full w-full object-cover" /> : "🏪"}
@@ -242,6 +276,8 @@ export default function ProduitPage() {
           </section>
         )}
 
+        <ProductReviews product={product} />
+
         <CommentSection productId={product.id} />
       </div>
 
@@ -289,6 +325,7 @@ export default function ProduitPage() {
       </div>
 
       <div className="lg:hidden"><BottomNav /></div>
+      {showReport && <AvailabilityReportSheet open onClose={() => setShowReport(false)} productId={product.id} shopId={shop.id} />}
       <GuestPrompt open={showGuestPrompt} onClose={() => setShowGuestPrompt(false)} />
       <BoostPicker open={showBoostPicker} onClose={() => setShowBoostPicker(false)} targetType="product" targetId={product.id} />
       </div>

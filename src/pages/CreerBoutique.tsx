@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { compressImage } from "@/lib/image";
 import { hapticSuccess } from "@/lib/haptics";
 import { useApp } from "@/lib/app-store";
-import { CATEGORIES } from "@/lib/categories";
+import { useCreationCategories } from "@/lib/availability-queries";
 import { CITIES, neighborhoodsFor } from "@/lib/neighborhoods";
 import { defaultHours, DAY_ORDER, DAY_LABELS_FR, DAY_LABELS_EN, type ShopHours } from "@/lib/hours";
 import { PhotoPicker, type PickedPhoto } from "@/components/photo-picker";
@@ -30,6 +30,7 @@ const PUBLISH_COST = 15;
 export default function CreerBoutiquePage() {
   const { session } = useAuth();
   const { t, lang } = useApp();
+  const creationCategories = useCreationCategories();
   const navigate = useNavigate();
   const createShop = useCreateShop();
   const [step, setStep] = useState<"type" | "form" | "products">("type");
@@ -244,9 +245,9 @@ export default function CreerBoutiquePage() {
         </Field>
         <Field label={t("creerBoutique_category")}>
           <select value={cat} onChange={(e) => setCat(e.target.value)} className="input">
-            {CATEGORIES.map((c) => (
+            {creationCategories.map((c) => (
               <option key={c.id} value={c.id}>
-                {t(c.key)}
+                {c.label}
               </option>
             ))}
           </select>

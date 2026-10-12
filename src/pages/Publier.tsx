@@ -7,7 +7,7 @@ import { PhotoPicker, type PickedPhoto } from "@/components/photo-picker";
 import { compressImage } from "@/lib/image";
 import { hapticSuccess } from "@/lib/haptics";
 import { useApp } from "@/lib/app-store";
-import { CATEGORIES } from "@/lib/categories";
+import { useCreationCategories } from "@/lib/availability-queries";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ArrowLeft, Sparkles, Loader2 } from "lucide-react";
@@ -28,6 +28,7 @@ export default function PublierPage() {
 function PublishProductForm() {
   const { session, profile } = useAuth();
   const { t } = useApp();
+  const creationCategories = useCreationCategories();
   const { data: myShops = [], isLoading: loadingShops } = useMyShops();
   const publishProduct = usePublishProduct();
 
@@ -143,9 +144,9 @@ function PublishProductForm() {
         </Field>
         <Field label={t("creerBoutique_category")}>
           <select value={cat} onChange={(e) => setCat(e.target.value)} className="input">
-            {CATEGORIES.map((c) => (
+            {creationCategories.map((c) => (
               <option key={c.id} value={c.id}>
-                {t(c.key)}
+                {c.label}
               </option>
             ))}
           </select>

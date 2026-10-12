@@ -2,6 +2,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import {
   Search, Sparkles, Map as MapIcon, MessageCircle, Share2, Heart, Bookmark,
   Shirt, Smartphone, Utensils, Sofa, Wrench, LayoutGrid, Package, Loader2, Flag,
+  Flame, Hammer, Car, Sprout, HeartPulse, MapPin,
 } from "lucide-react";
 import { useMemo, useState, useEffect, useRef, type ComponentType } from "react";
 import { motion } from "framer-motion";
@@ -18,7 +19,11 @@ import { useAuth } from "@/lib/auth";
 import { shareContent } from "@/lib/share";
 import { useApp } from "@/lib/app-store";
 import { cn } from "@/lib/utils";
+import { useCategoryOptions } from "@/lib/availability-queries";
 import { CATEGORIES } from "@/lib/categories";
+import { TrouvaillesStrip } from "@/components/trouvailles-strip";
+import { useDt } from "@/lib/availability-i18n";
+import { useNavigate } from "react-router-dom";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 const fadeUp = {
@@ -28,6 +33,10 @@ const fadeUp = {
 
 export default function MarchePage() {
   const { t } = useApp();
+  const dt = useDt();
+  const navigate = useNavigate();
+  const [dispoQuery, setDispoQuery] = useState("");
+  const categoryOptions = useCategoryOptions({ topLevelOnly: true });
   const [searchParams, setSearchParams] = useSearchParams();
   const [q, setQ] = useState(() => searchParams.get("q") ?? "");
   const [cat, setCat] = useState<string | null>(null);
@@ -54,7 +63,9 @@ export default function MarchePage() {
     hasNextPage: hasNextProducts,
     isFetchingNextPage: fetchingNextProducts,
   } = useInfiniteProducts();
-  const products = useMemo(() => productsPages?.pages.flat() ?? [], [productsPages]);
+  // Les articles « disponibilité » (listing_kind = stock) ne sont pas des vitrines : ils vivent
+  // dans la fiche boutique, la carte et la recherche de disponibilité, pas dans le fil du Marché.
+  const products = useMemo(() => (productsPages?.pages.flat() ?? []).filter((p: any) => p.listing_kind !== "stock"), [productsPages]);
   const {
     data: postsPages,
     isLoading: loadingPosts,
@@ -155,12 +166,44 @@ export default function MarchePage() {
 
       <div className="mt-3 flex snap-x-rail gap-3 overflow-x-auto px-4 no-scrollbar">
         <CategoryChip active={cat === null} onClick={() => setCat(null)} icon="LayoutGrid" label={t("marche_categoryAll")} />
-        {CATEGORIES.map((c) => (
-          <CategoryChip key={c.id} active={cat === c.id} onClick={() => setCat(cat === c.id ? null : c.id)} icon={c.icon} label={t(c.key)} />
-        ))}
+        {categoryOptions
+          .filter((c) => CATEGORIES.some((l) => l.id === c.id) || products.some((p: any) => p.category === c.id))
+          .map((c) => (
+            <CategoryChip key={c.id} active={cat === c.id} onClick={() => setCat(cat === c.id ? null : c.id)} icon={c.icon} label={c.label} />
+          ))}
       </div>
 
       <div className="mt-4 space-y-4 px-4">
+        {!q && !cat && condition === "all" && (
+          <section className="rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/10 to-card p-3.5">
+            <div className="flex items-center gap-2">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl gold-gradient"><MapPin size={17} /></span>
+              <div className="min-w-0">
+                <h2 className="text-sm font-bold leading-tight">{dt("mk_ctaTitle")}</h2>
+                <p className="text-[11px] text-muted-foreground">{dt("mk_ctaSub")}</p>
+              </div>
+            </div>
+            <form
+              className="mt-2.5 flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const v = dispoQuery.trim();
+                if (v.length >= 2) navigate(`/carte?q=${encodeURIComponent(v)}`);
+              }}
+            >
+              <input
+                value={dispoQuery}
+                onChange={(e) => setDispoQuery(e.target.value)}
+                placeholder={dt("mk_ctaPlaceholder")}
+                className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none"
+              />
+              <button type="submit" className="shrink-0 rounded-xl gold-gradient px-4 text-xs font-bold">{dt("mk_ctaGo")}</button>
+            </form>
+          </section>
+        )}
+
+        {!q && !cat && condition === "all" && <TrouvaillesStrip />}
+
         {showFeatured && (
           <section>
             <div className="mb-2 flex items-center gap-1.5">
@@ -263,7 +306,7 @@ export default function MarchePage() {
 }
 
 const ICONS: Record<string, ComponentType<{ size?: number }>> = {
-  Shirt, Smartphone, Utensils, Sparkles, Sofa, Wrench, LayoutGrid, Package,
+  Shirt, Smartphone, Utensils, Sparkles, Sofa, Wrench, LayoutGrid, Package, Flame, Hammer, Car, Sprout, HeartPulse,
 };
 
 function CategoryChip({ icon, label, active, onClick }: { icon: string; label: string; active: boolean; onClick: () => void }) {

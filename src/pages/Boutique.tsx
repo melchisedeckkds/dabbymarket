@@ -9,6 +9,8 @@ import { ReportDialog } from "@/components/report-dialog";
 import { SponsoredBadge } from "@/components/sponsored-badge";
 import { BottomNav } from "@/components/bottom-nav";
 import { SidebarNav } from "@/components/sidebar-nav";
+import { ShopAvailabilityCatalog } from "@/components/shop-availability-catalog";
+import { useShopCatalog } from "@/lib/availability-queries";
 import { useAuth } from "@/lib/auth";
 import { useApp } from "@/lib/app-store";
 import { useShop, useShops, useProducts, useReviews, useStartConversation, useRecordView, useViewsCount, useActiveBoosts, useShopLocations, useAddShopLocation, useRelocateShopLocation, useCloseShopLocation, useIsFollowing, useToggleFollow } from "@/lib/queries";
@@ -39,6 +41,7 @@ export default function BoutiquePage() {
   const locale = lang === "en" ? "en-US" : "fr-FR";
   const { data: shop, isLoading } = useShop(id);
   const { data: products = [] } = useProducts(id);
+  const { data: shopCatalog = [] } = useShopCatalog(id);
   const { data: reviews = [] } = useReviews(id);
   const { data: following = false } = useIsFollowing(id);
   const toggleFollow = useToggleFollow(id);
@@ -64,6 +67,12 @@ export default function BoutiquePage() {
       </div>
     );
   }
+
+  // Articles dont la disponibilité a été renseignée : affichés par état réel ;
+  // les autres restent dans la grille habituelle (aucune régression visuelle).
+  const trackedItems = shopCatalog.filter((p: any) => p.availability_status && p.availability_status !== "unknown");
+  const trackedIds = new Set(trackedItems.map((p: any) => p.id));
+  const plainProducts = products.filter((p: any) => !trackedIds.has(p.id));
 
   const avgRating = reviews.length ? (reviews.reduce((s: number, r: any) => s + r.rating, 0) / reviews.length).toFixed(1) : null;
   const openNow = isOpenNow(shop?.hours);
@@ -161,13 +170,15 @@ export default function BoutiquePage() {
         </div>
 
         {tab === "produits" && (
+          <>
+          <ShopAvailabilityCatalog shopId={shop.id} items={trackedItems} isOwner={session?.user?.id === shop.owner_id} />
           <div className="mt-4 grid grid-cols-2 gap-3">
             {products.length === 0 && (
               <p className="col-span-2 rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
                 {t("boutique_noProducts")}
               </p>
             )}
-            {products.map((p: any) => (
+            {plainProducts.map((p: any) => (
               <Link to={`/produit/${p.id}`} key={p.id} className="overflow-hidden rounded-2xl border border-border bg-card">
                 <div className="relative aspect-square bg-accent">
                   {p.images?.[0] && <img src={p.images[0]} alt={p.name} className="h-full w-full object-cover" />}
@@ -182,6 +193,7 @@ export default function BoutiquePage() {
               </Link>
             ))}
           </div>
+          </>
         )}
 
         {tab === "avis" && (

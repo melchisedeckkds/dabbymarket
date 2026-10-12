@@ -7,7 +7,6 @@ import {
 import { AppShell } from "@/components/app-shell";
 import { VerifiedBadge } from "@/components/product-card";
 import { useApp } from "@/lib/app-store";
-import { CATEGORIES } from "@/lib/categories";
 import { neighborhoodsFor } from "@/lib/neighborhoods";
 import { isOpenNow } from "@/lib/hours";
 import { useAuth } from "@/lib/auth";
@@ -21,6 +20,13 @@ import { GuestPrompt } from "@/components/guest-prompt";
 import { toast } from "sonner";
 import type { LatLngBounds } from "leaflet";
 import { fetchRoute, type RouteResult, type ApproximateRoute } from "@/lib/routing";
+import { AvailabilityBadge, FreshnessText } from "@/components/availability-badge";
+import { SearchAlertButton } from "@/components/alert-button";
+import { useDt, statusLabelKey } from "@/lib/availability-i18n";
+import {
+  useAvailabilitySearch, useCatalogItems, useCategoryOptions, useLogSearchDemand, useShopCatalog, matchCatalogItem,
+} from "@/lib/availability-queries";
+import { formatAgo, formatXAF, isAffirmative, type AvailabilityRow } from "@/lib/availability";
 
 const MapView = lazy(() => import("@/components/map-view"));
 
@@ -69,7 +75,7 @@ function useGeolocation() {
 
 export default function CartePage() {
   const { theme, t, lang } = useApp();
-  const { profile } = useAuth();
+  const { profile, session } = useAuth();
   const { location, geoStatus, requestLocation } = useGeolocation();
   const { data: rawLocations = [], isLoading } = useActiveShopLocations();
   // Une entrée par emplacement actif (une boutique multi-succursales
@@ -80,6 +86,7 @@ export default function CartePage() {
     () =>
       rawLocations.map((l: any) => ({
         id: l.shop_id,
+        owner_id: l.owner_id,
         locationId: l.location_id,
         name: l.name,
         category: l.category,
@@ -145,6 +152,8 @@ export default function CartePage() {
   // centre directement la carte de l'application sur ce point, en interne.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const q = params.get("q");
+    if (q) setQuery(q.slice(0, 80));
     const lat = Number(params.get("lat"));
     const lng = Number(params.get("lng"));
     if (!Number.isNaN(lat) && !Number.isNaN(lng) && lat && lng) {
@@ -166,17 +175,79 @@ export default function CartePage() {
   const { data: rankCapConfig } = useAppConfig();
   const rankCap = Number(rankCapConfig?.boost_rank_bonus_cap ?? 3);
 
+  // ===== Dabby Disponibilité =====
+  const dt = useDt();
+  const [showAvail, setShowAvail] = useState(true);
+  const [onlyAvail, setOnlyAvail] = useState(false);
+  const [freshOnly, setFreshOnly] = useState(false);
+  const [maxPrice, setMaxPrice] = useState<number | null>(null);
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(query.trim()), 400);
+    return () => clearTimeout(id);
+  }, [query]);
+  const { data: catalogItems = [] } = useCatalogItems();
+  const catalogMatch = useMemo(() => matchCatalogItem(debouncedQuery, catalogItems), [debouncedQuery, catalogItems]);
+  const categoryOptions = useCategoryOptions({ topLevelOnly: true });
+  const { data: availRows = [], isFetching: availFetching } = useAvailabilitySearch({
+    query: debouncedQuery,
+    category: cat,
+    lat: location?.lat ?? null,
+    lng: location?.lng ?? null,
+    radiusKm: location ? distMax : null,
+    onlyAvailable: onlyAvail,
+    maxPrice,
+    freshMinutes: freshOnly ? 120 : null,
+    includeUnknown: debouncedQuery.length > 0,
+    perShop: debouncedQuery ? 3 : 1,
+    limit: 200,
+    enabled: showAvail,
+  });
+  // une entrée par emplacement : la ligne la plus pertinente (rangée selon l'ordre de la RPC)
+  const availByLocation = useMemo(() => {
+    const m = new Map<string, { row: AvailabilityRow; rank: number }>();
+    availRows.forEach((r, i) => {
+      if (!m.has(r.location_id)) m.set(r.location_id, { row: r, rank: i });
+    });
+    return m;
+  }, [availRows]);
+  const productFilterActive = showAvail && (onlyAvail || freshOnly || maxPrice != null);
+  const affirmativeCount = availRows.filter((r) => isAffirmative(r.effective_status)).length;
+  const noAvailable = showAvail && debouncedQuery.length >= 2 && !availFetching && affirmativeCount === 0;
+  const defaultCity = useMemo(() => {
+    const counts = new Map<string, number>();
+    shopsWithDistance.forEach((s: any) => s.city && counts.set(s.city, (counts.get(s.city) ?? 0) + 1));
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  }, [shopsWithDistance]);
+  // Demande locale anonyme : une recherche sans aucune disponibilité alimente les statistiques
+  // (agrégées, avec seuil d'anonymat) proposées aux commerçants du secteur.
+  const logDemand = useLogSearchDemand();
+  useEffect(() => {
+    if (!noAvailable || !session) return;
+    logDemand.mutate({ query: debouncedQuery, catalogItem: catalogMatch?.id ?? null, neighborhood, city: defaultCity, results: 0 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noAvailable, debouncedQuery]);
+
   const filtered = useMemo(() => {
+    const hasAvail = (s: any) => showAvail && availByLocation.has(s.locationId);
     let list = shopsWithDistance.filter((s: any) => {
-      if (cat && s.category !== cat) return false;
+      if (cat && s.category !== cat && !hasAvail(s)) return false;
       if (s.distanceKm != null && s.distanceKm > distMax) return false;
-      if (query && !`${s.name}`.toLowerCase().includes(query.toLowerCase())) return false;
+      if (query && !`${s.name}`.toLowerCase().includes(query.toLowerCase()) && !hasAvail(s)) return false;
+      if (productFilterActive && !hasAvail(s)) return false;
       if (neighborhood && s.neighborhood !== neighborhood) return false;
       if (openNowOnly && !isOpenNow(s.hours)) return false;
       if (areaBounds && !areaBounds.contains([s.lat, s.lng])) return false;
       return true;
     });
     list = [...list].sort((a: any, b: any) => {
+      if (debouncedQuery && showAvail) {
+        const ra = availByLocation.get(a.locationId)?.rank;
+        const rb = availByLocation.get(b.locationId)?.rank;
+        if (ra != null && rb != null && ra !== rb) return ra - rb;
+        if (ra != null && rb == null) return -1;
+        if (ra == null && rb != null) return 1;
+      }
       if (a.distanceKm != null && b.distanceKm != null) return a.distanceKm - b.distanceKm;
       const scoreA = (a.verified ? 10 : 0) + (ratings?.get(a.id)?.avg ?? 0);
       const scoreB = (b.verified ? 10 : 0) + (ratings?.get(b.id)?.avg ?? 0);
@@ -186,7 +257,29 @@ export default function CartePage() {
     // libre — une boutique boostée ne peut dépasser une boutique nettement
     // plus proche/pertinente de plus de `rankCap` places.
     return applyRankCap(list, carteBoostIds, rankCap);
-  }, [shopsWithDistance, cat, distMax, query, neighborhood, openNowOnly, areaBounds, ratings, carteBoostIds, rankCap]);
+  }, [shopsWithDistance, cat, distMax, query, neighborhood, openNowOnly, areaBounds, ratings, carteBoostIds, rankCap, showAvail, availByLocation, productFilterActive, debouncedQuery]);
+
+  // Pins : la disponibilité n'est jamais affirmative si l'information est périmée ou contestée.
+  const pins = useMemo(
+    () =>
+      filtered.map((s: any) => {
+        const a = showAvail ? availByLocation.get(s.locationId) : undefined;
+        if (!a) return s;
+        return {
+          ...s,
+          availability: {
+            status: a.row.effective_status,
+            productName: a.row.product_name,
+            price: a.row.price_xaf,
+            rating: a.row.rating_avg,
+            ago: a.row.effective_status === "unknown" ? "" : formatAgo(a.row.confirmed_at, lang),
+            rank: a.rank,
+            statusLabel: dt(statusLabelKey(a.row.effective_status)),
+          },
+        };
+      }),
+    [filtered, showAvail, availByLocation, lang, dt],
+  );
 
   const neighborhoodOptions = useMemo(() => {
     const fromShops = new Set(shopsWithDistance.map((s: any) => s.neighborhood).filter(Boolean));
@@ -245,7 +338,7 @@ export default function CartePage() {
         {view === "map" && (mounted && !isLoading ? (
           <Suspense fallback={<MapSkeleton />}>
             <MapView
-              shops={filtered}
+              shops={pins}
               flashPins={filteredFlash.map((f: any) => ({ id: f.id, title: f.title, lat: f.lat, lng: f.lng, thumbnail: f.images?.[0] }))}
               selectedId={selected?.id ?? selectedFlash?.id ?? null}
               onSelect={(s: any) => {
@@ -276,7 +369,7 @@ export default function CartePage() {
           <MapSkeleton />
         ))}
         {view === "list" && (
-          <ShopListView shops={filtered} flashListings={filteredFlash} />
+          <ShopListView shops={filtered} flashListings={filteredFlash} avail={showAvail ? availByLocation : undefined} />
         )}
 
         <div className="pointer-events-none absolute inset-x-0 top-0 z-[350] h-40 bg-gradient-to-b from-background/85 via-background/40 to-transparent" />
@@ -302,9 +395,9 @@ export default function CartePage() {
             <FilterChip active={cat !== null}>
               <select value={cat ?? ""} onChange={(e) => setCat(e.target.value || null)} className="bg-transparent text-xs font-semibold outline-none">
                 <option value="">{t("carte_allCategories")}</option>
-                {CATEGORIES.map((c) => (
+                {categoryOptions.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {t(c.key)}
+                    {c.label}
                   </option>
                 ))}
               </select>
@@ -347,6 +440,39 @@ export default function CartePage() {
             >
               ⚡ {t("flash_toggleShowOnMap")}
             </button>
+            <button
+              onClick={() => setShowAvail((v) => !v)}
+              className={cn(
+                "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold shadow-sm backdrop-blur transition-all",
+                showAvail ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card/95 text-foreground",
+              )}
+            >
+              🟢 {dt("map_availability")}
+            </button>
+            {showAvail && (
+              <>
+                <button
+                  onClick={() => setOnlyAvail((v) => !v)}
+                  className={cn("inline-flex shrink-0 items-center rounded-full border px-3 py-1.5 text-xs font-semibold shadow-sm backdrop-blur", onlyAvail ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card/95")}
+                >
+                  {dt("map_onlyAvailable")}
+                </button>
+                <button
+                  onClick={() => setFreshOnly((v) => !v)}
+                  className={cn("inline-flex shrink-0 items-center rounded-full border px-3 py-1.5 text-xs font-semibold shadow-sm backdrop-blur", freshOnly ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card/95")}
+                >
+                  {dt("map_freshOnly")}
+                </button>
+                <FilterChip active={maxPrice != null}>
+                  <select value={maxPrice ?? ""} onChange={(e) => setMaxPrice(e.target.value ? Number(e.target.value) : null)} className="bg-transparent text-xs font-semibold outline-none">
+                    <option value="">{dt("map_anyPrice")}</option>
+                    {[2000, 5000, 10000, 25000, 50000, 100000].map((p) => (
+                      <option key={p} value={p}>{dt("map_maxPrice")} {p.toLocaleString("fr-FR")}</option>
+                    ))}
+                  </select>
+                </FilterChip>
+              </>
+            )}
           </div>
         </div>
 
@@ -384,6 +510,13 @@ export default function CartePage() {
           {geoStatus === "asking" ? <Loader2 size={20} className="animate-spin" /> : <Crosshair size={20} className={geoStatus === "granted" ? "text-primary" : ""} />}
         </button>
 
+        {!selected && !routeFor && noAvailable && (
+          <div className="absolute inset-x-3 bottom-[8.5rem] z-[460] rounded-2xl border border-border bg-card/95 p-3 text-center shadow-xl backdrop-blur animate-in fade-in">
+            <p className="text-xs text-muted-foreground">{dt("map_noResultsProduct")}</p>
+            <SearchAlertButton query={debouncedQuery} catalogItemId={catalogMatch?.id ?? null} maxPrice={maxPrice} neighborhood={neighborhood} city={defaultCity} className="mt-2" />
+          </div>
+        )}
+
         {!selected && !routeFor && filtered.length > 0 && (
           <div className="absolute inset-x-0 bottom-3 z-[450] animate-in fade-in slide-in-from-bottom-4">
             <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto no-scrollbar px-3 pb-2">
@@ -409,6 +542,19 @@ export default function CartePage() {
                       <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                         {s.distanceKm != null && <span>{s.distanceKm.toFixed(1)} km</span>}
                       </div>
+                      {showAvail && availByLocation.get(s.locationId) && (() => {
+                        const r = availByLocation.get(s.locationId)!.row;
+                        return (
+                          <div className="mt-1.5 space-y-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <AvailabilityBadge status={r.effective_status} compact />
+                              <span className="truncate text-[11px] font-semibold text-foreground">{r.product_name}</span>
+                            </div>
+                            <p className="truncate text-[11px] text-primary font-semibold">{formatXAF(r.price_xaf)}{r.rating_avg ? ` · ⭐ ${Number(r.rating_avg).toFixed(1)}` : ""}</p>
+                            <FreshnessText confirmedAt={r.confirmed_at} status={r.effective_status} />
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 </button>
@@ -478,7 +624,7 @@ export default function CartePage() {
   );
 }
 
-function ShopListView({ shops, flashListings = [] }: { shops: any[]; flashListings?: any[] }) {
+function ShopListView({ shops, flashListings = [], avail }: { shops: any[]; flashListings?: any[]; avail?: Map<string, { row: AvailabilityRow; rank: number }> }) {
   const { t } = useApp();
   const shopIds = useMemo(() => shops.map((s) => s.id), [shops]);
   const { data: ratings } = useShopRatingsMap(shopIds);
@@ -530,6 +676,16 @@ function ShopListView({ shops, flashListings = [] }: { shops: any[]; flashListin
                   {carteBoostIds.has(s.id) && <SponsoredBadge />}
                 </div>
                 <p className="truncate text-xs text-muted-foreground">{s.neighborhood ?? s.category}</p>
+                {avail?.get(s.locationId) && (() => {
+                  const a = avail.get(s.locationId)!.row;
+                  return (
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <AvailabilityBadge status={a.effective_status} compact />
+                      <span className="truncate text-[11px] font-semibold">{a.product_name} · {formatXAF(a.price_xaf)}</span>
+                      <FreshnessText confirmedAt={a.confirmed_at} status={a.effective_status} />
+                    </div>
+                  );
+                })()}
                 <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
                   {r && (
                     <span className="flex items-center gap-0.5 text-foreground">
@@ -621,7 +777,13 @@ function ShopSheet({
   const navigate = useNavigate();
   const { session } = useAuth();
   const { t } = useApp();
+  const dt = useDt();
   const { data: products = [] } = useProducts(shop.id);
+  const { data: catalog = [] } = useShopCatalog(shop.id);
+  const stockItems = useMemo(
+    () => catalog.filter((p: any) => p.availability_status && p.availability_status !== "unknown").slice(0, 4),
+    [catalog],
+  );
   const { data: reviews = [] } = useReviews(shop.id);
   const startConversation = useStartConversation();
   const sendMessage = useSendMessage();
@@ -693,6 +855,23 @@ function ShopSheet({
         </div>
       </div>
 
+      {stockItems.length > 0 && (
+        <div className="mt-3 space-y-1.5">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{dt("map_productsHere")}</p>
+          {stockItems.map((p: any) => (
+            <Link to={`/produit/${p.id}`} key={p.id} className="flex items-center gap-2 rounded-xl border border-border bg-background px-3 py-2">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-semibold">{p.name}</p>
+                <FreshnessText confirmedAt={p.confirmed_at ?? p.availability_confirmed_at} status={p.effective_status} />
+              </div>
+              <span className="shrink-0 text-xs font-bold text-primary">{formatXAF(p.price_xaf)}</span>
+              <AvailabilityBadge status={p.effective_status ?? "unknown"} compact />
+            </Link>
+          ))}
+          <p className="text-[10px] text-muted-foreground">{dt("st_not_a_reservation")}</p>
+        </div>
+      )}
+
       {previews.length > 0 && (
         <div className="mt-3 grid grid-cols-3 gap-2">
           {previews.map((p: any) => (
@@ -705,7 +884,7 @@ function ShopSheet({
 
       <div className="mt-4 grid grid-cols-3 gap-2">
         <button onClick={handleContact} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-primary py-2.5 text-xs font-semibold text-primary-foreground">
-          <MessageCircle size={14} /> {t("carte_contact")}
+          <MessageCircle size={14} /> {stockItems.length > 0 ? dt("map_confirmWithShop") : t("carte_contact")}
         </button>
         <button onClick={() => onRoute(shop)} className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-border bg-background py-2.5 text-xs font-semibold hover:bg-accent">
           <Navigation size={14} /> {t("carte_route")}

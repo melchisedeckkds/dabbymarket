@@ -7,6 +7,8 @@ import { supabase } from "@/lib/supabase";
 import { useQuery } from "@tanstack/react-query";
 import { MiniBarChart } from "@/components/mini-chart";
 import { downloadCSV } from "@/lib/csv";
+import { AdminDisponibiliteTab } from "@/components/admin-disponibilite";
+import { useDt } from "@/lib/availability-i18n";
 import {
   usePendingRecharges,
   useConfirmRecharge,
@@ -56,6 +58,7 @@ import {
   UserX,
   UserCheck,
   Coins,
+  PackageCheck,
   Search,
   FileText,
 } from "lucide-react";
@@ -114,11 +117,12 @@ function useAdminMetrics() {
   });
 }
 
-type AdminTab = "overview" | "moderation" | "shops" | "accounts" | "content" | "economy";
+type AdminTab = "overview" | "moderation" | "shops" | "accounts" | "content" | "economy" | "availability";
 
 export default function AdminPage() {
   const { profile } = useAuth();
   const { t, lang } = useApp();
+  const dt = useDt();
   const locale = lang === "en" ? "en-US" : "fr-FR";
   const [tab, setTab] = useState<AdminTab>("overview");
   const { data: metrics, isLoading } = useAdminMetrics();
@@ -188,6 +192,7 @@ export default function AdminPage() {
         <TabButton active={tab === "accounts"} onClick={() => setTab("accounts")} icon={Users} label={t("admin_tabAccounts")} />
         <TabButton active={tab === "content"} onClick={() => setTab("content")} icon={FileText} label={t("admin_tabContent")} />
         <TabButton active={tab === "economy"} onClick={() => setTab("economy")} icon={Coins} label={t("admin_tabEconomy")} />
+        <TabButton active={tab === "availability"} onClick={() => setTab("availability")} icon={PackageCheck} label={dt("a_tab")} />
       </div>
 
       {tab === "moderation" && <ModerationTab reports={reports} />}
@@ -195,6 +200,7 @@ export default function AdminPage() {
       {tab === "accounts" && <AccountsTab />}
       {tab === "content" && <ContentTab />}
       {tab === "economy" && <EconomyTab />}
+      {tab === "availability" && <AdminDisponibiliteTab />}
 
       {tab === "overview" && (
       <div className="space-y-4 p-4">

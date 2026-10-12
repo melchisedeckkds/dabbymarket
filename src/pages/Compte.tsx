@@ -11,8 +11,10 @@ import { useEffect, useRef, useState } from "react";
 import {
   Bookmark, Heart, Star, Store, Moon, Sun, Languages, Settings, ChevronRight,
   ShoppingBag, LogOut, Sparkles, TrendingUp, ShieldCheck, MessageSquarePlus,
-  LayoutDashboard, Plus, Loader2, FileText, Camera, Zap, CheckCircle2, Trash2,
+  LayoutDashboard, Plus, Loader2, FileText, Camera, Zap, CheckCircle2, Trash2, Bell, PackageCheck,
 } from "lucide-react";
+import { useDt } from "@/lib/availability-i18n";
+import { useUnreadNotificationCount } from "@/lib/availability-queries";
 import { formatFlashRemaining } from "@/lib/flash";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -72,6 +74,8 @@ export default function ComptePage() {
   const { profile, signOut, session } = useAuth();
   const navigate = useNavigate();
   const [tab, setTab] = useState<"achats" | "boutique" | "flash">("achats");
+  const dt = useDt();
+  const unreadNotifs = useUnreadNotificationCount();
   const { data: wishlistData = [] } = useWishlist();
   const { data: followedShops = [] } = useFollowedShops();
   const { data: myShops = [], isLoading: loadingShops } = useMyShops();
@@ -324,6 +328,8 @@ export default function ComptePage() {
 
         {/* ===== MENU DES RÉGLAGES ===== */}
         <div className="mt-6 space-y-2">
+          {myShops.length > 0 && <Row to="/disponibilite" icon={PackageCheck} label={dt("m_title")} />}
+          <Row to="/notifications" icon={Bell} label={`${dt("n_title")}${unreadNotifs > 0 ? ` (${unreadNotifs})` : ""}`} />
           <Row to="/suggestions" icon={MessageSquarePlus} label={t("compte_suggestFeature")} />
           <Row to="/cgu" icon={FileText} label={t("compte_terms")} />
           
