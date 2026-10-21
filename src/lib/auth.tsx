@@ -1,3 +1,4 @@
+import { sendAttribution } from "./attribution";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
@@ -48,7 +49,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function loadProfile(userId: string) {
     const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single();
-    if (!error) setProfile(data as Profile);
+    if (!error) {
+      setProfile(data as Profile);
+      sendAttribution(); // rattache l'origine du lien (une seule fois), non bloquant
+    }
   }
 
   async function refreshProfile() {

@@ -394,6 +394,25 @@ export function useShopActiveListingCount(shopId: string | undefined) {
   });
 }
 
+// Nombre d'articles vitrine actifs d'une boutique (pour afficher le vrai coût
+// de publication : gratuit dans le quota, facturé au mois au-delà).
+export function useShopActiveListingsCount(shopId: string | undefined) {
+  return useQuery({
+    queryKey: ["shop-active-count", shopId],
+    enabled: !!shopId,
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from("products")
+        .select("id", { count: "exact", head: true })
+        .eq("shop_id", shopId!)
+        .eq("is_active", true)
+        .neq("listing_kind", "stock");
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+}
+
 export function usePublishProduct() {
   const qc = useQueryClient();
   return useMutation({
@@ -452,9 +471,63 @@ export function useFlashListings() {
         .from("flash_listings")
         .select("*, profiles(id, name, avatar_url)")
         .eq("status", "active")
+        .gt("expires_at", new Date().toISOString())
+        .neq("visibility", "reduced")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data;
+    },
+    // Une Vente Flash disparaît du Marché dès la fin de la durée souscrite.
+    refetchInterval: 60_000,
+  });
+}
+
+// ---- Archives Vente Flash (admin) : annonces expirées/vendues/retirées/suspendues.
+export function useAdminFlashArchive(filters: { status: string; search: string; limit?: number }) {
+  return useQuery({
+    queryKey: ["admin-flash-archive", filters],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("admin_flash_archive", {
+        p_status: filters.status || null,
+        p_search: filters.search || null,
+        p_limit: filters.limit ?? 100,
+        p_offset: 0,
+      });
+      if (error) throw error;
+      return (data ?? []) as any[];
+    },
+  });
+}
+
+export function useAdminPepitesAudit() {
+  return useQuery({
+    queryKey: ["admin-pepites-audit"],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("admin_pepites_audit");
+      if (error) throw error;
+      return (data ?? []) as any[];
+    },
+  });
+}
+
+export function useAdminAcquisitionStats() {
+  return useQuery({
+    queryKey: ["admin-acquisition-stats"],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("admin_acquisition_stats");
+      if (error) throw error;
+      return (data ?? []) as any[];
+    },
+  });
+}
+
+export function useAdminBadgeCandidates() {
+  return useQuery({
+    queryKey: ["admin-badge-candidates"],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("admin_badge_candidates");
+      if (error) throw error;
+      return (data ?? []) as any[];
     },
   });
 }

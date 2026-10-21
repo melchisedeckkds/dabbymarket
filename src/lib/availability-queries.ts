@@ -58,7 +58,7 @@ export function useCategoryLabel() {
   };
 }
 
-export type CatalogItem = { id: string; category_id: string; name_fr: string; name_en: string; slug: string; sale_unit: string | null; synonyms: string[]; active: boolean };
+export type CatalogItem = { id: string; category_id: string; name_fr: string; name_en: string; slug: string; sale_unit: string | null; synonyms: string[]; active: boolean; reference_price_xaf?: number | null };
 export function useCatalogItems() {
   return useQuery({
     queryKey: ["catalog-items"],
