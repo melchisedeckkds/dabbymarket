@@ -83,21 +83,32 @@ serve(async (req) => {
       parts: [{ text: m.content }],
     }));
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: String(systemPrompt).slice(0, 6000) }] },
-          contents,
-          generationConfig: { temperature: 0.8, maxOutputTokens: 900 },
-        }),
-      },
-    );
+    // Modèle principal puis modèles de secours : le palier gratuit de Gemini
+    // sature par moments (429/503). On réessaie sur un autre modèle avant
+    // d'afficher une erreur. Surchargeable : GEMINI_MODEL, GEMINI_FALLBACK_MODELS.
+    const primary = Deno.env.get("GEMINI_MODEL") ?? "gemini-3.6-flash";
+    const fallbacks = (Deno.env.get("GEMINI_FALLBACK_MODELS") ?? "gemini-2.5-flash,gemini-2.5-flash-lite")
+      .split(",").map((m) => m.trim()).filter(Boolean);
+    const body = JSON.stringify({
+      systemInstruction: { parts: [{ text: String(systemPrompt).slice(0, 6000) }] },
+      contents,
+      generationConfig: { temperature: 0.8, maxOutputTokens: 900 },
+    });
 
-    if (!response.ok) {
-      const errText = await response.text();
+    let response: Response | null = null;
+    let errText = "";
+    for (const model of [primary, ...fallbacks]) {
+      const r = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body },
+      );
+      if (r.ok) { response = r; break; }
+      errText = await r.text();
+      // Seules la saturation / l'indisponibilité justifient un modèle de secours.
+      if (![429, 500, 503, 404].includes(r.status)) break;
+    }
+
+    if (!response) {
       return new Response(JSON.stringify({ error: `Erreur Gemini: ${errText}` }), {
         status: 502,
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
