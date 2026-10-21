@@ -26,6 +26,7 @@ const CreerBoutiquePage = lazy(() => import("@/pages/CreerBoutique"));
 const PublierPage = lazy(() => import("@/pages/Publier"));
 const PublierFlashPage = lazy(() => import("@/pages/PublierFlash"));
 const FlashListingPage = lazy(() => import("@/pages/FlashListing"));
+const VentesFlashPage = lazy(() => import("@/pages/VentesFlash"));
 const MessagesPage = lazy(() => import("@/pages/Messages"));
 const ComptePage = lazy(() => import("@/pages/Compte"));
 const AdminPage = lazy(() => import("@/pages/Admin"));
@@ -74,6 +75,7 @@ function AppRoutes() {
             <Route path="/carte" element={<CartePage />} />
             <Route path="/boutique/:id" element={<BoutiquePage />} />
             <Route path="/produit/:id" element={<ProduitPage />} />
+            <Route path="/flash" element={<VentesFlashPage />} />
             <Route path="/flash/:id" element={<FlashListingPage />} />
             <Route path="/cgu" element={<CguPage />} />
             <Route path="/profil/:id" element={<ProfilPage />} />
