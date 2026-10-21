@@ -2,14 +2,15 @@ import { Link, useSearchParams } from "react-router-dom";
 import {
   Search, Sparkles, Map as MapIcon, MessageCircle, Share2, Heart, Bookmark,
   Shirt, Smartphone, Utensils, Sofa, Wrench, LayoutGrid, Package, Loader2, Flag,
-  Flame, Hammer, Car, Sprout, HeartPulse, MapPin,
+  Flame, Hammer, Car, Sprout, HeartPulse, MapPin, Zap,
 } from "lucide-react";
 import { useMemo, useState, useEffect, useRef, type ComponentType } from "react";
 import { motion } from "framer-motion";
 import { ImageLightbox } from "@/components/image-lightbox";
 import { AppShell } from "@/components/app-shell";
 import { ProductCard } from "@/components/product-card";
-import { useInfiniteProducts, useInfinitePosts, useSinglePost, useToggleLike, useLikes, useComments, useShopRatingsMap, useActiveBoostIds, useAppConfig, applyRankCap } from "@/lib/queries";
+import { FlashCard } from "@/components/flash-card";
+import { useFlashListings, useInfiniteProducts, useInfinitePosts, useSinglePost, useToggleLike, useLikes, useComments, useShopRatingsMap, useActiveBoostIds, useAppConfig, applyRankCap } from "@/lib/queries";
 import { CommentSheet } from "@/components/comment-sheet";
 import { GuestPrompt } from "@/components/guest-prompt";
 import { ReportDialog } from "@/components/report-dialog";
@@ -76,6 +77,7 @@ export default function MarchePage() {
   const posts = useMemo(() => postsPages?.pages.flat() ?? [], [postsPages]);
   const shopRatings = useShopRatingsMap(products.map((p: any) => p.shops?.id).filter(Boolean));
 
+  const { data: flashListings = [] } = useFlashListings();
   const hasNextPage = hasNextProducts || hasNextPosts;
   const isFetchingNextPage = fetchingNextProducts || fetchingNextPosts;
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -105,7 +107,11 @@ export default function MarchePage() {
     const base = products.filter((p: any) => {
       if (cat && p.category !== cat) return false;
       if (condition !== "all" && p.condition !== condition) return false;
-      if (q && !p.name.toLowerCase().includes(q.toLowerCase())) return false;
+      if (q) {
+        const needle = q.toLowerCase();
+        const hay = `${p.name} ${p.shops?.name ?? ""} ${p.description ?? ""}`.toLowerCase();
+        if (!hay.includes(needle)) return false;
+      }
       return true;
     });
     // Un boost Recherche ne réordonne jamais librement : il ne peut faire
@@ -124,7 +130,17 @@ export default function MarchePage() {
     [products],
   );
 
-  const isEmpty = filteredProducts.length === 0 && filteredPosts.length === 0;
+  const filteredFlash = useMemo(
+    () => flashListings.filter((f: any) => {
+      if (cat && f.category !== cat) return false;
+      if (q && !`${f.title} ${f.description ?? ""} ${f.neighborhood}`.toLowerCase().includes(q.toLowerCase())) return false;
+      return true;
+    }),
+    [flashListings, q, cat],
+  );
+  const showFlashRail = filteredFlash.length > 0 && condition === "all";
+
+  const isEmpty = filteredProducts.length === 0 && filteredPosts.length === 0 && filteredFlash.length === 0;
   const loading = loadingProducts || loadingPosts;
   const showFeatured = boostedProducts.length > 0 && !q && !cat && condition === "all";
 
@@ -203,6 +219,25 @@ export default function MarchePage() {
         )}
 
         {!q && !cat && condition === "all" && <TrouvaillesStrip />}
+
+        {showFlashRail && (
+          <section>
+            <div className="mb-2 flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Zap size={15} className="text-primary" />
+                <h2 className="text-sm font-bold">{t("flash_marketRail")}</h2>
+              </div>
+              <Link to="/flash" className="text-[11px] font-semibold text-primary">{t("flash_seeAll")}</Link>
+            </div>
+            <div className="flex snap-x-rail gap-3 overflow-x-auto pb-1 no-scrollbar">
+              {filteredFlash.map((f: any, i: number) => (
+                <motion.div key={f.id} custom={i} initial="hidden" animate="show" variants={fadeUp} className="w-44 shrink-0 snap-start">
+                  <FlashCard listing={f} />
+                </motion.div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {showFeatured && (
           <section>

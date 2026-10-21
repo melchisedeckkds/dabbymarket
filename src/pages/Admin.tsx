@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { MiniBarChart } from "@/components/mini-chart";
 import { downloadCSV } from "@/lib/csv";
 import { AdminDisponibiliteTab } from "@/components/admin-disponibilite";
+import { AdminFlashArchive, AdminInsights } from "@/components/admin-insights";
 import { useDt } from "@/lib/availability-i18n";
 import {
   usePendingRecharges,
@@ -709,6 +710,8 @@ function ContentTab() {
       <section>
         <h2 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">⚡ {t("admin_flashListings")}</h2>
         <FlashModerationList />
+        <h3 className="mb-2 mt-4 text-xs font-semibold text-muted-foreground">Archives des Ventes Flash (expirées, vendues, retirées)</h3>
+        <AdminFlashArchive />
       </section>
 
       <section>
@@ -851,6 +854,8 @@ function EconomyTab() {
     flash_report_alert_threshold: t("admin_cfgFlashAlertThreshold"),
     flash_report_reduce_threshold: t("admin_cfgFlashReduceThreshold"),
     flash_report_suspend_threshold: t("admin_cfgFlashSuspendThreshold"),
+    verification_min_rating: "Badge : note moyenne minimale",
+    verification_min_reviews: "Badge : nombre d'avis minimal",
   };
 
   return (
@@ -949,6 +954,8 @@ function EconomyTab() {
         </div>
         <p className="mt-2 text-[11px] text-muted-foreground">{t("admin_cfgBoostsHint")}</p>
       </section>
+
+      <AdminInsights />
     </div>
   );
 }

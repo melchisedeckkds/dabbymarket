@@ -174,6 +174,7 @@ export default function RechargePage() {
               • {t("recharge_costPublishFree")} : <span className="font-bold text-[color:var(--verified)]">{t("common_free")}</span> ({t("recharge_costPublishQuota").replace("{n}", String(quota))})
             </li>
             <li>• {t("recharge_costPublishOverage").replace("{price}", String(overagePrice))}</li>
+            <li>• {t("recharge_costFlash").replace("{p24}", String(config?.flash_price_24h ?? 10)).replace("{p48}", String(config?.flash_price_48h ?? 15)).replace("{p7}", String(config?.flash_price_7d ?? 25))}</li>
             <li>• {t("recharge_costBoostsIntro")}</li>
           </ul>
           <p className="mt-2 text-[10px] italic">{t("recharge_boostFairnessNote")}</p>

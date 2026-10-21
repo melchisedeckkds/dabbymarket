@@ -48,6 +48,8 @@ function ItemRow({ p, shopId }: { p: ShopProduct; shopId: string }) {
   const upd = useUpdateStockItem();
   const [qty, setQty] = useState<number>(p.stock_qty ?? 0);
   const [price, setPrice] = useState(String(p.price_xaf));
+  const { data: catalogItems = [] } = useCatalogItems();
+  const refPrice = catalogItems.find((c) => c.id === (p as any).catalog_item_id)?.reference_price_xaf ?? null;
   const status: string = p.effective_status ?? "unknown";
   const declared: string = p.availability_status ?? "unknown";
   const busy = set.isPending || confirm.isPending || upd.isPending;
@@ -108,6 +110,9 @@ function ItemRow({ p, shopId }: { p: ShopProduct; shopId: string }) {
           className="w-28 rounded-lg border border-border bg-background px-2 py-1.5 text-xs font-semibold outline-none"
         />
         <span className="text-[11px] text-muted-foreground">FCFA{p.sale_unit ? ` / ${p.sale_unit}` : ""}</span>
+        {refPrice && Number(price) > refPrice && (
+          <span className="text-[10px] font-semibold text-destructive">Au-dessus du prix de référence ({refPrice.toLocaleString("fr-FR")} FCFA)</span>
+        )}
         <button
           onClick={() => upd.mutate({ productId: p.id, shopId, patch: { show_on_map: !(p.show_on_map ?? true) } })}
           className="ml-auto flex items-center gap-1 text-[11px] text-muted-foreground"

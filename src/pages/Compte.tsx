@@ -450,6 +450,11 @@ function MyFlashTab() {
                       {f.price_xaf.toLocaleString("fr-FR")} FCFA
                       {f.status === "active" ? ` · ${t("flash_expiresIn")} ${remaining}` : ` · ${statusLabel[f.status]}`}
                     </p>
+                    {f.status === "active" && f.boosted_until && (
+                      <p className="mt-0.5 flex items-center gap-1 text-[10px] font-semibold text-primary">
+                        <Zap size={10} /> {t("flash_boostedUntil")} {new Date(f.boosted_until).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}
+                      </p>
+                    )}
                   </div>
                 </Link>
                 {f.status === "active" && (

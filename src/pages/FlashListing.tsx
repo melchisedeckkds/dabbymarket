@@ -14,7 +14,6 @@ import {
 } from "@/lib/queries";
 import { useApp } from "@/lib/app-store";
 import { ReportDialog } from "@/components/report-dialog";
-import { BoostPicker } from "@/components/boost-picker";
 import { GuestPrompt } from "@/components/guest-prompt";
 import { Pepite } from "@/components/pepite";
 import { FLASH_DURATIONS, FLASH_CONDITION_LABEL_KEYS, formatFlashRemaining, type FlashCondition } from "@/lib/flash";
@@ -30,7 +29,7 @@ export default function FlashListingPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { session } = useAuth();
-  const { t } = useApp();
+  const { t, lang } = useApp();
   const { data: listing, isLoading } = useFlashListing(id);
   const { data: config } = useAppConfig();
   const markStatus = useMarkFlashStatus();
@@ -42,7 +41,6 @@ export default function FlashListingPage() {
 
   const [activePhoto, setActivePhoto] = useState(0);
   const [showReport, setShowReport] = useState(false);
-  const [showBoost, setShowBoost] = useState(false);
   const [showGuestPrompt, setShowGuestPrompt] = useState(false);
   const [contacting, setContacting] = useState(false);
 
@@ -56,7 +54,7 @@ export default function FlashListingPage() {
     );
   }
 
-  if (!listing || (listing.status !== "active" && session?.user.id !== listing.seller_id)) {
+  if (!listing || ((listing.status !== "active" || new Date(listing.expires_at).getTime() <= Date.now()) && session?.user.id !== listing.seller_id)) {
     return (
       <AppShell>
         <div className="space-y-3 p-8 text-center">
@@ -255,12 +253,10 @@ export default function FlashListingPage() {
                   </div>
                 </div>
 
-                <button
-                  onClick={() => setShowBoost(true)}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-xl gold-gradient shine py-2.5 text-xs font-bold"
-                >
-                  <Zap size={13} /> {t("flash_boost")}
-                </button>
+                <p className="flex items-start gap-1.5 rounded-xl bg-accent/60 p-2.5 text-[11px] text-muted-foreground">
+                  <Zap size={13} className="mt-0.5 shrink-0 text-primary" />
+                  {t("flash_boostedAuto").replace("{date}", new Date(listing.expires_at).toLocaleString(lang === "en" ? "en-US" : "fr-FR", { dateStyle: "medium", timeStyle: "short" }))}
+                </p>
               </>
             )}
           </div>
@@ -269,9 +265,6 @@ export default function FlashListingPage() {
 
       {!isOwner && listing && (
         <ReportDialog open={showReport} onClose={() => setShowReport(false)} targetType="flash_listing" targetId={listing.id} />
-      )}
-      {isOwner && listing && (
-        <BoostPicker open={showBoost} onClose={() => setShowBoost(false)} targetType="flash_listing" targetId={listing.id} />
       )}
       <GuestPrompt open={showGuestPrompt} onClose={() => setShowGuestPrompt(false)} />
     </AppShell>

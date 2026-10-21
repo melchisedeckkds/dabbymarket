@@ -43,9 +43,9 @@ export default function CguPage() {
         <h2 className="text-base font-bold">3. Inscription et compte utilisateur</h2>
         <p>
           L'inscription se fait par numéro de téléphone. Chaque utilisateur est responsable de la confidentialité de
-          son mot de passe et de l'exactitude des informations fournies. Le badge « boutique vérifiée » atteste
-          uniquement d'une vérification technique du numéro de téléphone et ne constitue pas une garantie de fiabilité
-          commerciale absolue.
+          son mot de passe et de l'exactitude des informations fournies. Le badge « boutique vérifiée » résulte
+          d'une double vérification : les retours d'expérience des utilisateurs (avis) et la validation par
+          l'équipe DabbyMarket. Il ne constitue pas une garantie de fiabilité commerciale absolue.
         </p>
 
         <h2 className="text-base font-bold">4. Les Pépites</h2>
