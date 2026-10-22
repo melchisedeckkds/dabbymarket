@@ -26,7 +26,7 @@ import { useDt, statusLabelKey } from "@/lib/availability-i18n";
 import {
   useAvailabilitySearch, useCatalogItems, useCategoryOptions, useLogSearchDemand, useShopCatalog, matchCatalogItem,
 } from "@/lib/availability-queries";
-import { formatAgo, formatXAF, isAffirmative, type AvailabilityRow } from "@/lib/availability";
+import { STATUS_COLOR, formatAgo, formatXAF, isAffirmative, type AvailabilityRow } from "@/lib/availability";
 
 const MapView = lazy(() => import("@/components/map-view"));
 
@@ -275,6 +275,7 @@ export default function CartePage() {
             ago: a.row.effective_status === "unknown" ? "" : formatAgo(a.row.confirmed_at, lang),
             rank: a.rank,
             statusLabel: dt(statusLabelKey(a.row.effective_status)),
+            image: a.row.image,
           },
         };
       }),
@@ -546,6 +547,9 @@ export default function CartePage() {
                         const r = availByLocation.get(s.locationId)!.row;
                         return (
                           <div className="mt-1.5 space-y-0.5">
+                            {r.image && (
+                              <img src={r.image} alt={r.product_name} loading="lazy" className="mb-1 h-20 w-full rounded-xl border-2 object-cover" style={{ borderColor: STATUS_COLOR[r.effective_status] }} />
+                            )}
                             <div className="flex items-center gap-1.5">
                               <AvailabilityBadge status={r.effective_status} compact />
                               <span className="truncate text-[11px] font-semibold text-foreground">{r.product_name}</span>
@@ -680,6 +684,7 @@ function ShopListView({ shops, flashListings = [], avail }: { shops: any[]; flas
                   const a = avail.get(s.locationId)!.row;
                   return (
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      {a.image && <img src={a.image} alt={a.product_name} loading="lazy" className="h-12 w-12 rounded-lg border-2 object-cover" style={{ borderColor: STATUS_COLOR[a.effective_status] }} />}
                       <AvailabilityBadge status={a.effective_status} compact />
                       <span className="truncate text-[11px] font-semibold">{a.product_name} · {formatXAF(a.price_xaf)}</span>
                       <FreshnessText confirmedAt={a.confirmed_at} status={a.effective_status} />

@@ -1,11 +1,14 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Plus, CheckCheck, Loader2, Eye, EyeOff, Minus, X, TrendingUp } from "lucide-react";
+import { ArrowLeft, Camera, Plus, CheckCheck, Loader2, Eye, EyeOff, Minus, X, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import { AvailabilityBadge, FreshnessText, ReliabilityChip } from "@/components/availability-badge";
 import { useDt } from "@/lib/availability-i18n";
-import { useMyShops } from "@/lib/queries";
+import { useMyShops, uploadImages } from "@/lib/queries";
+import { useAuth } from "@/lib/auth";
+import { PhotoPicker, type PickedPhoto } from "@/components/photo-picker";
+import { compressImage } from "@/lib/image";
 import {
   useShopCatalog, useSetAvailability, useConfirmProductAvailability, useConfirmShopAvailability, useCreateStockItem, useUpdateStockItem,
   useCategoryOptions, useCategoryRows, useCatalogItems, useShopReliability, useDemandInsights, type ShopProduct,
@@ -52,7 +55,21 @@ function ItemRow({ p, shopId }: { p: ShopProduct; shopId: string }) {
   const refPrice = catalogItems.find((c) => c.id === (p as any).catalog_item_id)?.reference_price_xaf ?? null;
   const status: string = p.effective_status ?? "unknown";
   const declared: string = p.availability_status ?? "unknown";
-  const busy = set.isPending || confirm.isPending || upd.isPending;
+  const { session } = useAuth();
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const busy = set.isPending || confirm.isPending || upd.isPending || photoBusy;
+  const photo: string | undefined = p.images?.[0];
+
+  async function changePhoto(file: File | undefined) {
+    if (!file || !session) return;
+    setPhotoBusy(true);
+    try {
+      const [url] = await uploadImages("product-images", session.user.id, [await compressImage(file)]);
+      await upd.mutateAsync({ productId: p.id, shopId, patch: { images: [url] } });
+      toast.success(dt("m_photoSaved"));
+    } catch (e: any) { toast.error(dt("c_error"), { description: e.message }); }
+    finally { setPhotoBusy(false); }
+  }
 
   async function change(s: Status) {
     try {
@@ -68,13 +85,19 @@ function ItemRow({ p, shopId }: { p: ShopProduct; shopId: string }) {
 
   return (
     <article className="space-y-2.5 rounded-2xl border border-border bg-card p-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
+      <div className="flex items-start gap-2.5">
+        <label className="relative h-14 w-14 shrink-0 cursor-pointer overflow-hidden rounded-xl border border-dashed border-border bg-accent" aria-label={dt("m_photo")}>
+          {photo ? <img src={photo} alt={p.name} className="h-full w-full object-cover" loading="lazy" /> : <span className="grid h-full w-full place-items-center text-muted-foreground"><Camera size={18} /></span>}
+          {photoBusy && <span className="absolute inset-0 grid place-items-center bg-background/70"><Loader2 size={16} className="animate-spin" /></span>}
+          <input type="file" accept="image/*" className="hidden" disabled={busy} onChange={(e) => { changePhoto(e.target.files?.[0]); e.target.value = ""; }} />
+        </label>
+        <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold">{p.name}</p>
           <FreshnessText confirmedAt={p.confirmed_at ?? p.availability_confirmed_at} status={status} />
         </div>
         <AvailabilityBadge status={status} />
       </div>
+      {!photo && <p className="text-[10px] text-muted-foreground">{dt("m_photoHint")}</p>}
 
       <StatusSwitch value={declared} onChange={change} disabled={busy} />
 
@@ -139,6 +162,9 @@ function AddItemSheet({ shopId, onClose }: { shopId: string; onClose: () => void
   const [status, setStatus] = useState<Status>("available");
   const [conditions, setConditions] = useState("");
   const [attrs, setAttrs] = useState<Record<string, string>>({});
+  const [photos, setPhotos] = useState<PickedPhoto[]>([]);
+  const [unit, setUnit] = useState("");
+  const { session } = useAuth();
 
   const item = catalog.find((c) => c.id === catalogId);
   const effectiveCat = item?.category_id ?? category;
@@ -149,9 +175,10 @@ function AddItemSheet({ shopId, onClose }: { shopId: string; onClose: () => void
   async function save() {
     if (!finalName || !effectiveCat || !Number(price)) return toast.error(dt("c_error"), { description: `${dt("m_name")} / ${dt("m_category")} / ${dt("m_price")}` });
     try {
+      const images = photos.length && session ? await uploadImages("product-images", session.user.id, photos.map((x) => x.file)) : [];
       await create.mutateAsync({
-        shopId, name: finalName, category: effectiveCat, catalogItemId: item?.id ?? null, price: Number(price), status,
-        qty: qty ? Number(qty) : null, saleUnit: item?.sale_unit ?? catRow?.units?.[0] ?? null, conditions: conditions.trim() || null, attributes: attrs,
+        images, shopId, name: finalName, category: effectiveCat, catalogItemId: item?.id ?? null, price: Number(price), status,
+        qty: qty ? Number(qty) : null, saleUnit: item?.sale_unit ?? (unit || null), conditions: conditions.trim() || null, attributes: attrs,
       });
       toast.success(dt("m_saved"));
       onClose();
@@ -184,7 +211,18 @@ function AddItemSheet({ shopId, onClose }: { shopId: string; onClose: () => void
           <input inputMode="numeric" value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, ""))} placeholder={dt("m_price")} className="rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none" />
           <input inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value.replace(/\D/g, ""))} placeholder={dt("m_qty")} className="rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none" />
         </div>
+        {!item?.sale_unit && (catRow?.units?.length ?? 0) > 0 && (
+          <select value={unit} onChange={(e) => setUnit(e.target.value)} className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm">
+            <option value="">{dt("m_unit")} ({dt("m_optional")})</option>
+            {catRow!.units!.map((u) => <option key={u} value={u}>{u}</option>)}
+          </select>
+        )}
         <StatusSwitch value={status} onChange={setStatus} />
+        <div className="space-y-1">
+          <p className="text-[11px] font-semibold text-muted-foreground">{dt("m_photo")}</p>
+          <PhotoPicker photos={photos} onChange={setPhotos} max={1} />
+          <p className="text-[10px] text-muted-foreground">{dt("m_photoHint")}</p>
+        </div>
         <input value={conditions} onChange={(e) => setConditions(e.target.value.slice(0, 300))} placeholder={dt("m_conditions")} className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none" />
 
         {attributes.length > 0 && (

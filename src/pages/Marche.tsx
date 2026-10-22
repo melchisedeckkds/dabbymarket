@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { useCategoryOptions } from "@/lib/availability-queries";
 import { CATEGORIES } from "@/lib/categories";
 import { TrouvaillesStrip } from "@/components/trouvailles-strip";
+import { NowAvailableStrip } from "@/components/now-available-strip";
 import { useDt } from "@/lib/availability-i18n";
 import { useNavigate } from "react-router-dom";
 
@@ -217,6 +218,8 @@ export default function MarchePage() {
             </form>
           </section>
         )}
+
+        {!cat && condition === "all" && <NowAvailableStrip q={q} />}
 
         {!q && !cat && condition === "all" && <TrouvaillesStrip />}
 
