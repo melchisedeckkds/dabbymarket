@@ -191,6 +191,7 @@ function useInvalidateAvailability() {
     qc.invalidateQueries({ queryKey: ["availability-search"] });
     qc.invalidateQueries({ queryKey: ["availability-index"] });
     qc.invalidateQueries({ queryKey: ["trouvailles"] });
+    qc.invalidateQueries({ queryKey: ["now-available"] });
     qc.invalidateQueries({ queryKey: ["shop-reliability"] });
     qc.invalidateQueries({ queryKey: ["products"] });
   };
@@ -234,9 +235,9 @@ export function useConfirmShopAvailability() {
 export function useCreateStockItem() {
   const inv = useInvalidateAvailability();
   return useMutation({
-    mutationFn: async (i: { shopId: string; name: string; category: string; catalogItemId?: string | null; price: number; status: "available" | "limited" | "out"; qty?: number | null; saleUnit?: string | null; conditions?: string | null; attributes?: Record<string, string> }) => {
+    mutationFn: async (i: { shopId: string; name: string; category: string; catalogItemId?: string | null; price: number; status: "available" | "limited" | "out"; qty?: number | null; saleUnit?: string | null; conditions?: string | null; attributes?: Record<string, string>; images?: string[] }) => {
       const { data, error } = await supabase.from("products").insert({
-        shop_id: i.shopId, name: i.name, description: null, price_xaf: i.price, category: i.category, condition: "Neuf", images: [],
+        shop_id: i.shopId, name: i.name, description: null, price_xaf: i.price, category: i.category, condition: "Neuf", images: i.images ?? [],
         listing_kind: "stock", catalog_item_id: i.catalogItemId ?? null, availability_status: i.status,
         stock_qty: i.status === "out" ? 0 : i.qty ?? null, sale_unit: i.saleUnit ?? null, sale_conditions: i.conditions ?? null, attributes: i.attributes ?? {},
       }).select().single();
@@ -341,6 +342,7 @@ function useInvalidateReviews() {
     qc.invalidateQueries({ queryKey: ["product-rating-stats", productId] });
     qc.invalidateQueries({ queryKey: ["catalog-rating"] });
     qc.invalidateQueries({ queryKey: ["trouvailles"] });
+    qc.invalidateQueries({ queryKey: ["now-available"] });
     qc.invalidateQueries({ queryKey: ["availability-search"] });
   };
 }
@@ -614,4 +616,45 @@ export function useProductRatingsMap(ids: string[]) {
 /** Catégories proposées à la création d'une boutique / d'un article : niveau principal, hors catégories réglementées. */
 export function useCreationCategories() {
   return useCategoryOptions({ topLevelOnly: true }).filter((c) => !c.is_regulated);
+}
+
+// ============ MARKETPLACE : « Disponible maintenant » (articles en stock avec photo) ============
+export type NowAvailable = {
+  product_id: string; shop_id: string; shop_name: string; name: string; price_xaf: number;
+  sale_unit: string | null; image: string; effective_status: string; confirmed_at: string | null;
+};
+
+export function useNowAvailable() {
+  return useQuery({
+    queryKey: ["now-available"],
+    staleTime: 2 * 60 * 1000,
+    retry: false,
+    queryFn: async (): Promise<NowAvailable[]> => {
+      const { data: av, error } = await supabase
+        .from("product_availability")
+        .select("product_id, shop_id, effective_status, confirmed_at, listing_kind")
+        .eq("listing_kind", "stock")
+        .in("effective_status", ["available", "limited"])
+        .order("confirmed_at", { ascending: false })
+        .limit(60);
+      if (error || !av?.length) return [];
+      const ids = av.map((a: any) => a.product_id);
+      const shopIds = [...new Set(av.map((a: any) => a.shop_id))];
+      const [{ data: prods }, { data: shops }] = await Promise.all([
+        supabase.from("products").select("id, name, price_xaf, sale_unit, images").in("id", ids),
+        supabase.from("shops").select("id, name").in("id", shopIds),
+      ]);
+      const pm = new Map((prods ?? []).map((p: any) => [p.id, p]));
+      const sm = new Map((shops ?? []).map((s: any) => [s.id, s.name as string]));
+      const out: NowAvailable[] = [];
+      for (const a of av as any[]) {
+        const p: any = pm.get(a.product_id);
+        const img = p?.images?.[0];
+        if (!p || !img) continue;
+        out.push({ product_id: a.product_id, shop_id: a.shop_id, shop_name: sm.get(a.shop_id) ?? "", name: p.name, price_xaf: p.price_xaf, sale_unit: p.sale_unit ?? null, image: img, effective_status: a.effective_status, confirmed_at: a.confirmed_at });
+        if (out.length >= 12) break;
+      }
+      return out;
+    },
+  });
 }
