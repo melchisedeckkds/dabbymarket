@@ -24,6 +24,8 @@ export type ShopPin = {
     /** rang de pertinence (0 = meilleur) : sert à arbitrer les bulles quand la carte est chargée */
     rank: number;
     statusLabel: string;
+    /** photo de l'article (facultative) : déclenche la bulle « photo » */
+    image?: string | null;
   };
 };
 
@@ -78,8 +80,19 @@ function shopPin(shop: ShopPin, active: boolean, showCallout: boolean) {
     : `<span>${escapeHtml(shop.name.charAt(0).toUpperCase())}</span>`;
   const av = shop.availability;
   const dot = av ? `<span class="dm-pin-status" style="background:${STATUS_COLOR[av.status]};"></span>` : "";
+  const avImg = av ? safeImageUrl(av.image) : "";
   const callout =
-    av && (showCallout || active)
+    av && avImg && (showCallout || active)
+      ? `<div class="dm-callout dm-callout--photo" style="border-color:${STATUS_COLOR[av.status]};">
+           <span class="dm-callout-photo" style="border-color:${STATUS_COLOR[av.status]};"><img src="${avImg}" alt="" loading="lazy" /></span>
+           <span class="dm-callout-text">
+             <b>${escapeHtml(av.productName)}</b>
+             <strong>${escapeHtml(formatXAF(av.price))}</strong>
+             <i style="color:${STATUS_COLOR[av.status]};">● ${escapeHtml(av.statusLabel)}</i>
+             <em>${escapeHtml(av.ago)}</em>
+           </span>
+         </div>`
+      : av && (showCallout || active)
       ? `<div class="dm-callout" style="border-color:${STATUS_COLOR[av.status]}99;">
            <span class="dm-callout-dot" style="background:${STATUS_COLOR[av.status]};"></span>
            <span class="dm-callout-text">
