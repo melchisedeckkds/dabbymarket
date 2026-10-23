@@ -3,6 +3,8 @@ import L from "leaflet";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { STATUS_COLOR, escapeHtml, safeImageUrl, formatXAF, type EffectiveStatus } from "@/lib/availability";
 
+export type MapStyle = "plan" | "streets" | "satellite" | "relief";
+
 export type GeoPoint = { lat: number; lng: number; accuracy?: number };
 
 export type ShopPin = {
@@ -146,13 +148,23 @@ function FitToShops({
 }) {
   const map = useMap();
   const didInitialCountryFly = useRef(false);
+  const lastFocus = useRef<[number, number] | null>(null);
+  const lastKey = useRef("");
 
   useEffect(() => {
     if (routeActive) return; // FitToRoute prend le relais du cadrage
-    if (focus) {
-      map.flyTo(focus, 15, { duration: 0.9 });
+    // Cadrage recalculé seulement si le jeu de boutiques ou la position
+    // change réellement : un simple rafraîchissement de données (avis,
+    // disponibilités) ne doit pas arracher la carte à l'utilisateur.
+    const key = `${shops.map((s) => s.locationId ?? s.id).join(",")}|${flashPins.map((f) => f.id).join(",")}|${user ? 1 : 0}`;
+    if (focus && focus !== lastFocus.current) {
+      lastFocus.current = focus;
+      lastKey.current = key;
+      map.flyTo(focus, Math.max(map.getZoom(), 15), { duration: 0.8 });
       return;
     }
+    if (key === lastKey.current) return;
+    lastKey.current = key;
     if (user) {
       // Position réelle activée : on recentre sur l'utilisateur + boutiques
       // proches (c'est ce qui permet de voir ce qui est près de chez soi).
@@ -186,6 +198,15 @@ function FitToRoute({ coordinates }: { coordinates: [number, number][] }) {
     if (!coordinates.length) return;
     map.fitBounds(L.latLngBounds(coordinates).pad(0.15), { animate: true });
   }, [coordinates, map]);
+  return null;
+}
+
+// Expose l'instance Leaflet au parent (boutons zoom, recentrage) et signale
+// un glissement manuel (l'utilisateur « décentre » la carte).
+function MapBridge({ onReady, onUserDrag }: { onReady?: (m: L.Map) => void; onUserDrag?: () => void }) {
+  const map = useMap();
+  useEffect(() => { onReady?.(map); }, [map]); // eslint-disable-line react-hooks/exhaustive-deps
+  useMapEvents({ dragstart: () => onUserDrag?.() });
   return null;
 }
 
@@ -260,6 +281,9 @@ export default function MapView({
   onAreaChange,
   route,
   routeApproximate,
+  mapStyle = "plan",
+  onMapReady,
+  onUserDrag,
 }: {
   shops: ShopPin[];
   flashPins?: FlashPin[];
@@ -276,6 +300,9 @@ export default function MapView({
    * sur la carte de l'application, sans jamais quitter DabbyMarket. */
   route?: [number, number][];
   routeApproximate?: boolean;
+  mapStyle?: MapStyle;
+  onMapReady?: (m: L.Map) => void;
+  onUserDrag?: () => void;
 }) {
   // CARTO exige désormais une clé d'API sur ses fonds de carte gratuits
   // (depuis fin août 2026 — sans lien avec DabbyMarket, ça touche tous les
@@ -298,7 +325,16 @@ export default function MapView({
       attributionControl={false}
       className="absolute inset-0 h-full w-full"
     >
-      <TileLayer url={tileUrl} attribution="&copy; OpenStreetMap &copy; CARTO" />
+      {mapStyle === "plan" && <TileLayer key="plan" url={tileUrl} attribution="&copy; OpenStreetMap &copy; CARTO" maxZoom={19} />}
+      {mapStyle === "streets" && <TileLayer key="streets" url="https://tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap" maxZoom={19} />}
+      {mapStyle === "satellite" && (
+        <>
+          <TileLayer key="sat" url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" attribution="Esri" maxZoom={19} />
+          <TileLayer key="sat-labels" url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}" attribution="Esri" maxZoom={19} />
+        </>
+      )}
+      {mapStyle === "relief" && <TileLayer key="relief" url="https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png" subdomains="abc" attribution="&copy; OpenStreetMap, SRTM | OpenTopoMap" maxZoom={17} />}
+      <MapBridge onReady={onMapReady} onUserDrag={onUserDrag} />
       <FitToShops shops={shops} flashPins={flashPins} user={user} focus={focus} countryCenter={countryCenter} routeActive={!!route?.length} />
       <MapClickHandler onMapClick={onMapClick} />
       <CalloutPlanner shops={shops} onPlan={setCalloutIds} />
