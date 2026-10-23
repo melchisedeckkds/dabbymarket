@@ -1,8 +1,8 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Star, MessageCircle, PackageSearch, ChevronDown, Layers, X, Navigation,
-  Crosshair, Search, ShieldCheck, Loader2, MapPin, Clock, List, Map as MapIcon, RefreshCw,
+  Crosshair, Plus, Minus, Search, ShieldCheck, Loader2, MapPin, Clock, List, Map as MapIcon, RefreshCw,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { VerifiedBadge } from "@/components/product-card";
@@ -18,7 +18,8 @@ import { useEscapeToClose } from "@/hooks/use-escape-to-close";
 import { COUNTRY_CODES, getCountryFromPhone } from "@/lib/country-codes";
 import { GuestPrompt } from "@/components/guest-prompt";
 import { toast } from "sonner";
-import type { LatLngBounds } from "leaflet";
+import type { LatLngBounds, Map as LeafletMap } from "leaflet";
+import type { MapStyle } from "@/components/map-view";
 import { fetchRoute, type RouteResult, type ApproximateRoute } from "@/lib/routing";
 import { AvailabilityBadge, FreshnessText } from "@/components/availability-badge";
 import { SearchAlertButton } from "@/components/alert-button";
@@ -137,6 +138,18 @@ export default function CartePage() {
   const [showFlash, setShowFlash] = useState(true);
   const [selectedFlash, setSelectedFlash] = useState<any | null>(null);
   const areaDirty = !!pendingBounds;
+  const [mapStyle, setMapStyle] = useState<MapStyle>(() => {
+    try { const v = localStorage.getItem("dm-map-style"); if (v === "plan" || v === "streets" || v === "satellite" || v === "relief") return v; } catch { /* stockage indisponible */ }
+    return "streets";
+  });
+  const chooseStyle = (m: MapStyle) => { setMapStyle(m); try { localStorage.setItem("dm-map-style", m); } catch { /* ignoré */ } };
+  const mapRef = useRef<LeafletMap | null>(null);
+  const [centered, setCentered] = useState(false);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const railRef = useRef<HTMLDivElement | null>(null);
+  const railProgrammatic = useRef(false);
+  const railTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const highlightLoc = useRef<string | null>(null);
   useEscapeToClose(showLocateSheet, () => setShowLocateSheet(false));
   useEscapeToClose(!!selectedFlash, () => setSelectedFlash(null));
   useEscapeToClose(!!selected, () => setSelected(null));
@@ -315,11 +328,54 @@ export default function CartePage() {
 
   const handleLocate = async () => {
     if (geoStatus === "granted" && location) {
+      if (centered) {
+        // Deuxième appui : on « décentre » et on revoit toutes les boutiques.
+        const pts: [number, number][] = filtered.map((x: any) => [x.lat, x.lng] as [number, number]);
+        if (mapRef.current && pts.length) mapRef.current.fitBounds(pts, { padding: [70, 70], animate: true });
+        setCentered(false);
+        return;
+      }
       setFocus([location.lat, location.lng]);
-      toast.success(t("carte_locationCentered"));
+      setCentered(true);
       return;
     }
     setShowLocateSheet(true);
+  };
+
+  // Rail de boutiques ↔ carte : un pin touché fait défiler le rail jusqu'à
+  // sa fiche ; faire glisser le rail met la boutique en surbrillance et
+  // recadre la carte dessus.
+  const scrollRailTo = useCallback((locId: string) => {
+    const rail = railRef.current;
+    const card = rail?.querySelector<HTMLElement>(`[data-loc="${CSS.escape(locId)}"]`);
+    if (!rail || !card) return;
+    railProgrammatic.current = true;
+    rail.scrollTo({ left: card.offsetLeft - (rail.clientWidth - card.clientWidth) / 2, behavior: "smooth" });
+    setTimeout(() => { railProgrammatic.current = false; }, 700);
+  }, []);
+
+  const onRailScroll = () => {
+    if (railProgrammatic.current) return;
+    if (railTimer.current) clearTimeout(railTimer.current);
+    railTimer.current = setTimeout(() => {
+      const rail = railRef.current;
+      if (!rail) return;
+      const mid = rail.scrollLeft + rail.clientWidth / 2;
+      let best: HTMLElement | null = null;
+      let bestD = Infinity;
+      rail.querySelectorAll<HTMLElement>("[data-loc]").forEach((el) => {
+        const d = Math.abs(el.offsetLeft + el.clientWidth / 2 - mid);
+        if (d < bestD) { bestD = d; best = el; }
+      });
+      const loc = (best as HTMLElement | null)?.dataset.loc;
+      const shop = loc ? filtered.find((x: any) => x.locationId === loc) : null;
+      if (shop && shop.locationId !== highlightLoc.current) {
+        highlightLoc.current = shop.locationId;
+        setHighlightId(shop.id);
+        setCentered(false);
+        setFocus([shop.lat, shop.lng]);
+      }
+    }, 140);
   };
 
   const confirmLocate = async () => {
@@ -341,11 +397,16 @@ export default function CartePage() {
             <MapView
               shops={pins}
               flashPins={filteredFlash.map((f: any) => ({ id: f.id, title: f.title, lat: f.lat, lng: f.lng, thumbnail: f.images?.[0] }))}
-              selectedId={selected?.id ?? selectedFlash?.id ?? null}
+              selectedId={selected?.id ?? selectedFlash?.id ?? highlightId}
               onSelect={(s: any) => {
-                setSelected(s);
+                // Un pin touché : surbrillance + rail synchronisé ; la fiche
+                // détaillée s'ouvre en touchant la carte de la boutique.
                 setSelectedFlash(null);
+                highlightLoc.current = s.locationId ?? s.id;
+                setHighlightId(s.id);
+                setCentered(false);
                 setFocus([s.lat, s.lng]);
+                scrollRailTo(s.locationId ?? s.id);
               }}
               onSelectFlash={(f: any) => {
                 const full = filteredFlash.find((x: any) => x.id === f.id);
@@ -364,6 +425,9 @@ export default function CartePage() {
               onAreaChange={setPendingBounds}
               route={routeData?.coordinates}
               routeApproximate={routeData?.approximate}
+              mapStyle={mapStyle}
+              onMapReady={(m) => { mapRef.current = m; }}
+              onUserDrag={() => setCentered(false)}
             />
           </Suspense>
         ) : (
@@ -499,17 +563,42 @@ export default function CartePage() {
 
         {view === "map" && (
         <>
+        <div className="pointer-events-none absolute right-3 top-[9.5rem] z-[420] flex flex-col items-end gap-2">
+          <div role="radiogroup" aria-label="Fond de carte" className="pointer-events-auto w-24 overflow-hidden rounded-2xl border border-border bg-card/95 shadow-lg backdrop-blur">
+            {([["plan", "map_stylePlan"], ["streets", "map_styleStreets"], ["satellite", "map_styleSatellite"], ["relief", "map_styleRelief"]] as const).map(([m, key]) => (
+              <button
+                key={m}
+                role="radio"
+                aria-checked={mapStyle === m}
+                onClick={() => chooseStyle(m)}
+                className={cn("block w-full px-3 py-2 text-center text-xs font-bold transition-colors", mapStyle === m ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-accent")}
+              >
+                {dt(key)}
+              </button>
+            ))}
+          </div>
+          <div className="pointer-events-auto flex flex-col overflow-hidden rounded-full border border-border bg-card/95 shadow-lg backdrop-blur">
+            <button onClick={() => mapRef.current?.zoomIn()} aria-label={dt("map_zoomIn")} className="grid h-11 w-11 place-items-center active:bg-accent"><Plus size={20} /></button>
+            <span className="mx-2 h-px bg-border" />
+            <button onClick={() => mapRef.current?.zoomOut()} aria-label={dt("map_zoomOut")} className="grid h-11 w-11 place-items-center active:bg-accent"><Minus size={20} /></button>
+          </div>
+        </div>
+
         <button
           onClick={handleLocate}
-          aria-label={t("carte_locate")}
+          aria-label={geoStatus === "granted" && centered ? dt("map_uncenter") : dt("map_centerMe")}
+          title={geoStatus === "granted" && centered ? dt("map_uncenter") : dt("map_centerMe")}
           className={cn(
-            "absolute right-4 z-[500] grid h-12 w-12 place-items-center rounded-full border border-border bg-card shadow-xl transition-all active:scale-95",
-            selected || routeFor ? "bottom-[19rem]" : "bottom-40",
+            "absolute right-3 z-[500] grid h-12 w-12 place-items-center rounded-full border border-border bg-card shadow-xl transition-all active:scale-95",
+            selected || routeFor ? "bottom-[19rem]" : "bottom-44",
             geoStatus === "granted" && "border-primary text-primary",
+            centered && "bg-primary text-primary-foreground",
           )}
         >
-          {geoStatus === "asking" ? <Loader2 size={20} className="animate-spin" /> : <Crosshair size={20} className={geoStatus === "granted" ? "text-primary" : ""} />}
+          {geoStatus === "asking" ? <Loader2 size={20} className="animate-spin" /> : <Crosshair size={20} />}
         </button>
+
+        <p className="pointer-events-none absolute bottom-[0.15rem] left-2 z-[440] max-w-[60%] truncate text-[8px] text-foreground/60">{dt("map_credits")}</p>
 
         {!selected && !routeFor && noAvailable && (
           <div className="absolute inset-x-3 bottom-[8.5rem] z-[460] rounded-2xl border border-border bg-card/95 p-3 text-center shadow-xl backdrop-blur animate-in fade-in">
@@ -520,15 +609,19 @@ export default function CartePage() {
 
         {!selected && !routeFor && filtered.length > 0 && (
           <div className="absolute inset-x-0 bottom-3 z-[450] animate-in fade-in slide-in-from-bottom-4">
-            <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto no-scrollbar px-3 pb-2">
+            <div ref={railRef} onScroll={onRailScroll} className="relative flex snap-x snap-mandatory gap-3 overflow-x-auto no-scrollbar px-3 pb-2">
               {filtered.map((s: any) => (
                 <button
                   key={s.locationId}
+                  data-loc={s.locationId}
                   onClick={() => {
                     setSelected(s);
                     setFocus([s.lat, s.lng]);
                   }}
-                  className="dm-shop-card snap-center shrink-0 basis-[78%] overflow-hidden rounded-2xl border border-border bg-card/95 p-3 text-left shadow-xl backdrop-blur active:scale-[0.98] transition-transform"
+                  className={cn(
+                    "dm-shop-card snap-center shrink-0 basis-[78%] overflow-hidden rounded-2xl border bg-card/95 p-3 text-left shadow-xl backdrop-blur transition-all active:scale-[0.98]",
+                    highlightId === s.id ? "border-primary ring-2 ring-primary/60" : "border-border",
+                  )}
                 >
                   <div className="flex items-center gap-3">
                     <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl bg-accent text-2xl">
@@ -541,7 +634,11 @@ export default function CartePage() {
                         {carteBoostIds.has(s.id) && <SponsoredBadge />}
                       </div>
                       <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                        {s.distanceKm != null && <span>{s.distanceKm.toFixed(1)} km</span>}
+                        {ratings?.get(s.id)?.avg ? (
+                          <span className="flex items-center gap-0.5 font-semibold text-foreground"><Star size={11} className="fill-primary text-primary" />{Number(ratings.get(s.id)!.avg).toFixed(1)}</span>
+                        ) : null}
+                        {s.distanceKm != null && <span>· {s.distanceKm.toFixed(1)} km</span>}
+                        {(() => { const o = isOpenNow(s.hours); return o == null ? null : <span className={o ? "font-semibold text-[color:var(--verified)]" : "font-semibold text-destructive"}>· {o ? t("carte_openNow") : t("carte_closedNow")}</span>; })()}
                       </div>
                       {showAvail && availByLocation.get(s.locationId) && (() => {
                         const r = availByLocation.get(s.locationId)!.row;
