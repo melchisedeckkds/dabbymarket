@@ -10,6 +10,7 @@ import { LaGueriteChat } from "@/components/la-guerite-chat";
 import { OfflineBanner } from "@/components/offline-banner";
 import { OnboardingTour } from "@/components/onboarding-tour";
 import { SplashScreen } from "@/components/splash-screen";
+import { RatingPrompts } from "@/components/rating-prompts";
 import { InstallPrompt } from "@/components/install-prompt";
 import { EngagementPopups } from "@/components/engagement-popups";
 import { registerPwa } from "@/lib/pwa";
@@ -21,6 +22,8 @@ const AuthPage = lazy(() => import("@/pages/Auth"));
 const MarchePage = lazy(() => import("@/pages/Marche"));
 const CartePage = lazy(() => import("@/pages/Carte"));
 const BoutiquePage = lazy(() => import("@/pages/Boutique"));
+const SantePage = lazy(() => import("@/pages/Sante"));
+const SanteDossierPage = lazy(() => import("@/pages/SanteDossier"));
 const ProduitPage = lazy(() => import("@/pages/Produit"));
 const CreerBoutiquePage = lazy(() => import("@/pages/CreerBoutique"));
 const PublierPage = lazy(() => import("@/pages/Publier"));
@@ -76,6 +79,8 @@ function AppRoutes() {
             <Route path="/boutique/:id" element={<BoutiquePage />} />
             <Route path="/produit/:id" element={<ProduitPage />} />
             <Route path="/flash" element={<VentesFlashPage />} />
+            <Route path="/sante" element={<SantePage />} />
+            <Route path="/sante/dossier/:shopId" element={<RequireAuth><SanteDossierPage /></RequireAuth>} />
             <Route path="/flash/:id" element={<FlashListingPage />} />
             <Route path="/cgu" element={<CguPage />} />
             <Route path="/profil/:id" element={<ProfilPage />} />
@@ -108,6 +113,7 @@ function AuthedExtras() {
     <>
       <OnboardingTour />
       <NotificationWatcher />
+      <RatingPrompts />
     </>
   );
 }
@@ -120,8 +126,18 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => setShowSplash(false), 4000);
-    return () => clearTimeout(timer);
+    // Splash court et réel : au moins 1,2 s (marque), fermé dès que la page est chargée, 2,5 s au plus.
+    const start = Date.now();
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      setTimeout(() => setShowSplash(false), Math.max(0, 1200 - (Date.now() - start)));
+    };
+    if (document.readyState === "complete") finish();
+    else window.addEventListener("load", finish, { once: true });
+    const cap = setTimeout(finish, 2500);
+    return () => { clearTimeout(cap); window.removeEventListener("load", finish); };
   }, []);
 
   return (
