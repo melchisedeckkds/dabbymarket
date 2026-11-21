@@ -1,5 +1,6 @@
 import { Link, Navigate, useLocation } from "react-router-dom";
-import { Store, Map as MapIcon, PlusCircle, MessageCircle, User, ShieldCheck, LogOut } from "lucide-react";
+import { Store, Map as MapIcon, PlusCircle, MessageCircle, User, ShieldCheck, LogOut, HeartPulse } from "lucide-react";
+import { useV2 } from "@/lib/v2-i18n";
 import { useAuth } from "@/lib/auth";
 import { useApp } from "@/lib/app-store";
 import { Pepite } from "./pepite";
@@ -23,6 +24,7 @@ export function SidebarNav() {
   const { session } = useAuth();
   const navigate = useNavigate();
   const { unreadCount, t } = useApp();
+  const v2 = useV2();
 
   return (
     <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-border bg-background/60 px-3 py-5 lg:flex xl:w-72">
@@ -67,6 +69,15 @@ export function SidebarNav() {
             </Link>
           );
         })}
+        <Link
+          to="/sante"
+          className={cn(
+            "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+            path.startsWith("/sante") ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent",
+          )}
+        >
+          <HeartPulse size={20} /> {v2("hl_title")}
+        </Link>
         {profile?.is_admin && (
           <Link
             to="/admin"
