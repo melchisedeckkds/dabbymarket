@@ -1,6 +1,8 @@
 import { Link, useSearchParams } from "react-router-dom";
 import { AppShell } from "@/components/app-shell";
 import { useAuth } from "@/lib/auth";
+import { useShowcaseUsage } from "@/lib/v2-queries";
+import { useV2 } from "@/lib/v2-i18n";
 import { useMyShops, useShopActiveListingsCount, useAppConfig, usePublishProduct, useCreatePost, uploadImage, uploadImages } from "@/lib/queries";
 import { Pepite } from "@/components/pepite";
 import { PhotoPicker, type PickedPhoto } from "@/components/photo-picker";
@@ -44,8 +46,9 @@ function PublishProductForm() {
   const { data: activeCount = 0 } = useShopActiveListingsCount(activeShop || undefined);
   const { data: config } = useAppConfig();
   const quota = Number(config?.free_active_listings_quota ?? 3);
-  const overagePrice = Number(config?.quota_overage_price_pepites ?? 10);
-  const overQuota = activeCount >= quota;
+  const { data: showcaseUsage } = useShowcaseUsage(activeShop || undefined);
+  const showcaseFull = !!showcaseUsage && showcaseUsage.showcased >= showcaseUsage.showcase_limit;
+  const v2 = useV2();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -172,19 +175,10 @@ function PublishProductForm() {
         <div className="rounded-2xl border border-border bg-card p-3">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">{t("publier_cost")}</span>
-            <span className={cn("inline-flex items-center gap-1 text-right font-bold", overQuota ? "text-primary" : "text-[color:var(--verified)]")}>
-              {overQuota ? (
-                <>{overagePrice} <Pepite size={14} /></>
-              ) : (
-                t("common_free")
-              )}
-            </span>
+            <span className="inline-flex items-center gap-1 text-right font-bold text-[color:var(--verified)]">{t("common_free")}</span>
           </div>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            {overQuota
-              ? t("publier_costOverage").replace("{price}", String(overagePrice)).replace("{n}", String(quota))
-              : t("publier_costFreeInQuota").replace("{n}", String(quota))}
-            {" "}({activeCount}/{quota})
+            {showcaseFull ? v2("vit_added_catalog") : v2("vit_usage", { a: showcaseUsage?.showcased ?? 0, b: showcaseUsage?.showcase_limit ?? quota })}
           </p>
           <div className="mt-1 flex items-center justify-between text-xs">
             <span className="text-muted-foreground">{t("publier_currentBalance")}</span>

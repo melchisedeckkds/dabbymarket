@@ -9,6 +9,8 @@ import { MiniBarChart } from "@/components/mini-chart";
 import { downloadCSV } from "@/lib/csv";
 import { AdminDisponibiliteTab } from "@/components/admin-disponibilite";
 import { AdminFlashArchive, AdminInsights } from "@/components/admin-insights";
+import { AdminReviewsTab, AdminReliabilityTab, AdminHealthTab } from "@/components/admin-v2";
+import { useV2 } from "@/lib/v2-i18n";
 import { useDt } from "@/lib/availability-i18n";
 import {
   usePendingRecharges,
@@ -118,7 +120,7 @@ function useAdminMetrics() {
   });
 }
 
-type AdminTab = "overview" | "moderation" | "shops" | "accounts" | "content" | "economy" | "availability";
+type AdminTab = "overview" | "moderation" | "shops" | "accounts" | "content" | "economy" | "availability" | "reviews" | "reliability" | "health";
 
 export default function AdminPage() {
   const { profile } = useAuth();
@@ -126,6 +128,7 @@ export default function AdminPage() {
   const dt = useDt();
   const locale = lang === "en" ? "en-US" : "fr-FR";
   const [tab, setTab] = useState<AdminTab>("overview");
+  const v2 = useV2();
   const { data: metrics, isLoading } = useAdminMetrics();
   const { data: pendingRecharges = [] } = usePendingRecharges();
   const confirmRecharge = useConfirmRecharge();
@@ -194,6 +197,9 @@ export default function AdminPage() {
         <TabButton active={tab === "content"} onClick={() => setTab("content")} icon={FileText} label={t("admin_tabContent")} />
         <TabButton active={tab === "economy"} onClick={() => setTab("economy")} icon={Coins} label={t("admin_tabEconomy")} />
         <TabButton active={tab === "availability"} onClick={() => setTab("availability")} icon={PackageCheck} label={dt("a_tab")} />
+        <TabButton active={tab === "reviews"} onClick={() => setTab("reviews")} icon={Flag} label={v2("ad_reviews")} />
+        <TabButton active={tab === "reliability"} onClick={() => setTab("reliability")} icon={Store} label={v2("ad_reliability")} />
+        <TabButton active={tab === "health"} onClick={() => setTab("health")} icon={PackageCheck} label={v2("ad_health")} />
       </div>
 
       {tab === "moderation" && <ModerationTab reports={reports} />}
@@ -202,6 +208,9 @@ export default function AdminPage() {
       {tab === "content" && <ContentTab />}
       {tab === "economy" && <EconomyTab />}
       {tab === "availability" && <AdminDisponibiliteTab />}
+      {tab === "reviews" && <AdminReviewsTab />}
+      {tab === "reliability" && <AdminReliabilityTab />}
+      {tab === "health" && <AdminHealthTab />}
 
       {tab === "overview" && (
       <div className="space-y-4 p-4">

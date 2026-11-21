@@ -10,7 +10,7 @@ import { ImageLightbox } from "@/components/image-lightbox";
 import { AppShell } from "@/components/app-shell";
 import { ProductCard } from "@/components/product-card";
 import { FlashCard } from "@/components/flash-card";
-import { useFlashListings, useInfiniteProducts, useInfinitePosts, useSinglePost, useToggleLike, useLikes, useComments, useShopRatingsMap, useActiveBoostIds, useAppConfig, applyRankCap } from "@/lib/queries";
+import { useFlashListings, useInfiniteProducts, useInfinitePosts, useSinglePost, useToggleLike, useLikes, useComments, useShopRatingsMap, useActiveBoostIds } from "@/lib/queries";
 import { CommentSheet } from "@/components/comment-sheet";
 import { GuestPrompt } from "@/components/guest-prompt";
 import { ReportDialog } from "@/components/report-dialog";
@@ -26,6 +26,9 @@ import { TrouvaillesStrip } from "@/components/trouvailles-strip";
 import { NowAvailableStrip } from "@/components/now-available-strip";
 import { useDt } from "@/lib/availability-i18n";
 import { useNavigate } from "react-router-dom";
+import { CatalogResultCard } from "@/components/catalog-result-card";
+import { useCatalogSearch, logSearchDemand } from "@/lib/v2-queries";
+import { useV2 } from "@/lib/v2-i18n";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 const fadeUp = {
@@ -43,6 +46,14 @@ export default function MarchePage() {
   const [q, setQ] = useState(() => searchParams.get("q") ?? "");
   const [cat, setCat] = useState<string | null>(null);
   const [condition, setCondition] = useState<"all" | "Neuf" | "Occasion">("all");
+  const v2 = useV2();
+  // Recherche serveur (tout le catalogue, y compris articles en rupture ou non confirmés), avec petite attente de frappe.
+  const [debouncedQ, setDebouncedQ] = useState(q);
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQ(q), 300);
+    return () => clearTimeout(id);
+  }, [q]);
+  const searching = debouncedQ.trim().length >= 2 || !!cat;
 
   // Lien profond `/?post=<id>` (ex. depuis un profil) : ouvre directement
   // la publication en plein écran avec sa légende, ses likes et ses
@@ -101,25 +112,24 @@ export default function MarchePage() {
   }, [hasNextProducts, hasNextPosts, fetchingNextProducts, fetchingNextPosts, fetchNextProducts, fetchNextPosts]);
 
   const { data: rechercheBoostIds = new Set<string>() } = useActiveBoostIds("product", "recherche");
-  const { data: rankCapConfig } = useAppConfig();
-  const rankCap = Number(rankCapConfig?.boost_rank_bonus_cap ?? 3);
+  const search = useCatalogSearch({ q: debouncedQ, category: cat }, searching);
+  const searchRows = useMemo(
+    () => (search.data?.pages.flat() ?? []).filter((r) => condition === "all" || r.condition === condition),
+    [search.data, condition],
+  );
+  const searchSettled = searching && !search.isLoading && !search.isFetching;
+  const loggedRef = useRef<string>("");
+  useEffect(() => {
+    const term = debouncedQ.trim();
+    if (!searchSettled || term.length < 3 || loggedRef.current === term) return;
+    loggedRef.current = term;
+    logSearchDemand(term, searchRows.length);
+  }, [searchSettled, debouncedQ, searchRows.length]);
 
-  const filteredProducts = useMemo(() => {
-    const base = products.filter((p: any) => {
-      if (cat && p.category !== cat) return false;
-      if (condition !== "all" && p.condition !== condition) return false;
-      if (q) {
-        const needle = q.toLowerCase();
-        const hay = `${p.name} ${p.shops?.name ?? ""} ${p.description ?? ""}`.toLowerCase();
-        if (!hay.includes(needle)) return false;
-      }
-      return true;
-    });
-    // Un boost Recherche ne réordonne jamais librement : il ne peut faire
-    // remonter un article que de `rankCap` places au maximum, jamais
-    // dépasser un résultat nettement plus pertinent.
-    return q || cat ? applyRankCap(base, rechercheBoostIds, rankCap) : base;
-  }, [products, q, cat, condition, rechercheBoostIds, rankCap]);
+  const filteredProducts = useMemo(
+    () => (searching ? [] : products.filter((p: any) => condition === "all" || p.condition === condition)),
+    [products, searching, condition],
+  );
 
   const filteredPosts = useMemo(() => {
     if (cat || condition !== "all") return [];
@@ -141,9 +151,9 @@ export default function MarchePage() {
   );
   const showFlashRail = filteredFlash.length > 0 && condition === "all";
 
-  const isEmpty = filteredProducts.length === 0 && filteredPosts.length === 0 && filteredFlash.length === 0;
-  const loading = loadingProducts || loadingPosts;
-  const showFeatured = boostedProducts.length > 0 && !q && !cat && condition === "all";
+  const isEmpty = searching ? searchRows.length === 0 && filteredPosts.length === 0 && filteredFlash.length === 0 : filteredProducts.length === 0 && filteredPosts.length === 0 && filteredFlash.length === 0;
+  const loading = searching ? search.isLoading : loadingProducts || loadingPosts;
+  const showFeatured = boostedProducts.length > 0 && !searching && condition === "all";
 
   return (
     <AppShell>
@@ -219,6 +229,16 @@ export default function MarchePage() {
           </section>
         )}
 
+        {!searching && condition === "all" && (
+          <Link to="/sante" className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl gold-gradient"><HeartPulse size={17} /></span>
+            <span className="min-w-0">
+              <span className="block text-sm font-bold leading-tight">{v2("hl_title")}</span>
+              <span className="block text-[11px] text-muted-foreground">{v2("hl_intro")}</span>
+            </span>
+          </Link>
+        )}
+
         {!cat && condition === "all" && <NowAvailableStrip q={q} />}
 
         {!q && !cat && condition === "all" && <TrouvaillesStrip />}
@@ -283,6 +303,17 @@ export default function MarchePage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2">
+            {searching && (
+              <div className="col-span-full space-y-2.5">
+                <p className="text-[11px] text-muted-foreground">{v2("sr_all_found")}</p>
+                {searchRows.map((r) => <CatalogResultCard key={r.product_id} row={r} />)}
+                {search.hasNextPage && (
+                  <button onClick={() => search.fetchNextPage()} disabled={search.isFetchingNextPage} className="w-full rounded-xl border border-border py-2 text-xs font-semibold">
+                    {v2("sr_load_more")}
+                  </button>
+                )}
+              </div>
+            )}
             {filteredProducts.map((p: any, i: number) => (
               <motion.div key={p.id} custom={i} initial="hidden" animate="show" variants={fadeUp}>
                 <ProductCard product={p} rating={p.shops ? shopRatings.data?.get(p.shops.id) : undefined} sponsored={rechercheBoostIds.has(p.id)} />
@@ -296,7 +327,7 @@ export default function MarchePage() {
           </div>
         )}
 
-        {!loading && hasNextPage && (
+        {!loading && !searching && hasNextPage && (
           <div ref={sentinelRef} className="flex justify-center py-4">
             {isFetchingNextPage && <Loader2 size={18} className="animate-spin text-primary" />}
           </div>

@@ -20,6 +20,12 @@ import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { isOpenNow } from "@/lib/hours";
 import { toast } from "sonner";
+import { ShopTrustSummary } from "@/components/trust-badges";
+import { ShopReviewSheet } from "@/components/shop-review-sheet";
+import { ShowcaseManager } from "@/components/showcase-manager";
+import { ReliabilityPanel } from "@/components/reliability-panel";
+import { useV2, type V2Key } from "@/lib/v2-i18n";
+import { useShopReviewsV2, useHealthFacilities, useMyHealthProfile } from "@/lib/v2-queries";
 
 function formatXAF(n: number) {
   return `${n.toLocaleString("fr-FR")} FCFA`;
@@ -52,6 +58,13 @@ export default function BoutiquePage() {
   const [showGuestPrompt, setShowGuestPrompt] = useState(false);
   const [showBoostPicker, setShowBoostPicker] = useState(false);
   const [showReportDialog, setShowReportDialog] = useState(false);
+  const v2 = useV2();
+  const [showReviewSheet, setShowReviewSheet] = useState(false);
+  const [reportReviewId, setReportReviewId] = useState<string | null>(null);
+  const { data: reviewsV2 = [] } = useShopReviewsV2(id);
+  const { data: healthFacilities = [] } = useHealthFacilities();
+  const { data: myHealthProfile } = useMyHealthProfile(session?.user?.id && shop?.owner_id === session.user.id ? id : undefined);
+  const isHealthShop = healthFacilities.some((f) => f.shop_id === id) || !!myHealthProfile || shop?.category === "sante";
   const { data: activeShopBoosts = [] } = useActiveBoosts("shop", id);
   const { data: allShops = [] } = useShops();
 
@@ -171,6 +184,15 @@ export default function BoutiquePage() {
 
         {tab === "produits" && (
           <>
+          {session?.user?.id === shop.owner_id && (
+            <div className="mt-4 space-y-3">
+              <ShowcaseManager shopId={shop.id} isHealth={isHealthShop} />
+              <ReliabilityPanel shopId={shop.id} />
+              {isHealthShop && (
+                <Link to={`/sante/dossier/${shop.id}`} className="block rounded-xl border border-border bg-card py-2.5 text-center text-sm font-semibold">{v2("hl_open_dossier")}</Link>
+              )}
+            </div>
+          )}
           <ShopAvailabilityCatalog shopId={shop.id} items={trackedItems} isOwner={session?.user?.id === shop.owner_id} />
           <div className="mt-4 grid grid-cols-2 gap-3">
             {products.length === 0 && (
@@ -198,12 +220,24 @@ export default function BoutiquePage() {
 
         {tab === "avis" && (
           <div className="mt-4 space-y-3">
-            {reviews.length === 0 && (
+            <div className="rounded-2xl border border-border bg-card p-3.5">
+              <ShopTrustSummary shopId={shop.id} />
+              {session?.user?.id !== shop.owner_id && (
+                <button
+                  onClick={() => (session ? setShowReviewSheet(true) : setShowGuestPrompt(true))}
+                  className="mt-3 w-full rounded-xl gold-gradient py-2.5 text-sm font-bold"
+                >
+                  {v2("tr_rate_cta")}
+                </button>
+              )}
+              {isHealthShop && <p className="mt-2 text-[11px] text-muted-foreground">{v2("hl_reviews_stars_only")}</p>}
+            </div>
+            {reviewsV2.length === 0 && (
               <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
                 {t("boutique_noReviews")}
               </p>
             )}
-            {reviews.map((r: any) => (
+            {reviewsV2.map((r) => (
               <div key={r.id} className="rounded-2xl border border-border bg-card p-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-semibold">{r.profiles?.name ?? "—"}</span>
@@ -214,7 +248,12 @@ export default function BoutiquePage() {
                   </span>
                 </div>
                 {r.comment && <p className="mt-1.5 text-sm">{r.comment}</p>}
-                <p className="mt-1 text-[11px] text-muted-foreground">{new Date(r.created_at).toLocaleDateString(locale)}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {new Date(r.created_at).toLocaleDateString(locale)} · {v2(`tr_evidence_${r.evidence}` as V2Key)}
+                  {session && r.user_id !== session.user.id && session.user.id !== shop.owner_id && (
+                    <button onClick={() => setReportReviewId(r.id)} className="ml-2 underline">{t("report_title")}</button>
+                  )}
+                </p>
               </div>
             ))}
           </div>
@@ -338,6 +377,8 @@ export default function BoutiquePage() {
       <GuestPrompt open={showGuestPrompt} onClose={() => setShowGuestPrompt(false)} />
       <BoostPicker open={showBoostPicker} onClose={() => setShowBoostPicker(false)} targetType="shop" targetId={shop.id} />
       <ReportDialog open={showReportDialog} onClose={() => setShowReportDialog(false)} targetType="shop" targetId={shop.id} />
+      {reportReviewId && <ReportDialog open onClose={() => setReportReviewId(null)} targetType="shop_review" targetId={reportReviewId} />}
+      <ShopReviewSheet open={showReviewSheet} onClose={() => setShowReviewSheet(false)} shopId={shop.id} shopName={shop.name} isHealth={isHealthShop} />
       </div>
     </div>
   );

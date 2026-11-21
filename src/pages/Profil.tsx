@@ -9,6 +9,7 @@ import { ShopHeaderSkeleton } from "@/components/skeletons";
 import { maskPhone } from "@/lib/utils";
 import { ReportDialog } from "@/components/report-dialog";
 import { GuestPrompt } from "@/components/guest-prompt";
+import { ContributorBadge } from "@/components/trust-badges";
 
 export default function ProfilPage() {
   const { id } = useParams<{ id: string }>();
@@ -58,6 +59,7 @@ export default function ProfilPage() {
             {profile.avatar_url ? <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" /> : profile.name?.[0]?.toUpperCase() ?? "?"}
           </div>
           <h2 className="mt-3 text-base font-bold">{profile.name}</h2>
+          <div className="mt-1 flex justify-center"><ContributorBadge userId={profile.id} /></div>
           <p className="mt-0.5 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
             <Phone size={12} /> {maskPhone(profile.phone)}
           </p>

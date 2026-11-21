@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { recordInteraction } from "@/lib/v2-queries";
 import {
   Star, MessageCircle, PackageSearch, ChevronDown, Layers, X, Navigation,
   Crosshair, Plus, Minus, Search, ShieldCheck, Loader2, MapPin, Clock, List, Map as MapIcon, RefreshCw,
@@ -665,7 +666,7 @@ export default function CartePage() {
         )}
 
         {selected && !routeFor && (
-          <ShopSheet shop={selected} onClose={() => setSelected(null)} onRoute={(s) => setRouteFor(s)} userLocation={location} />
+          <ShopSheet shop={selected} onClose={() => setSelected(null)} onRoute={(s) => { setRouteFor(s); if (s?.id) recordInteraction(s.id, null, "route"); }} userLocation={location} />
         )}
         {selectedFlash && !routeFor && (
           <FlashSheet flash={selectedFlash} onClose={() => setSelectedFlash(null)} />
