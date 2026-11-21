@@ -266,9 +266,13 @@ export function useInfiniteProducts() {
     queryFn: async ({ pageParam }) => {
       const from = pageParam * PRODUCTS_PAGE_SIZE;
       const to = from + PRODUCTS_PAGE_SIZE - 1;
+      // Le Marché n'affiche que la VITRINE (articles choisis par chaque boutique, 3 gratuits) et les
+      // articles actuellement boostés. Tout le reste du catalogue est trouvable via la recherche serveur.
       const { data, error } = await supabase
         .from("products")
         .select("*, shops(*)")
+        .eq("is_active", true)
+        .or(`is_showcased.eq.true,boosted_until.gt.${new Date().toISOString()}`)
         .order("created_at", { ascending: false })
         .range(from, to);
       if (error) throw error;
@@ -425,10 +429,8 @@ export function usePublishProduct() {
       condition: "Neuf" | "Occasion";
       images: string[];
     }) => {
-      // Publier un article est gratuit dans la limite du quota (Modèle 1) ;
-      // au-delà, la facturation récurrente (10 Pépites/mois par article
-      // supplémentaire) est prélevée par une tâche planifiée mensuelle, pas
-      // à la publication — voir bill_quota_overage() côté base de données.
+      // Publier est toujours gratuit : l'article entre en vitrine s'il reste une place
+      // (3 gratuites), sinon au catalogue, où la recherche le trouve (migration 0020).
       const { data, error } = await supabase.from("products").insert(input).select().single();
       if (error) throw error;
       // Verse le bonus de bienvenue si c'est le 1er article avec photo de
@@ -442,6 +444,8 @@ export function usePublishProduct() {
       qc.invalidateQueries({ queryKey: ["products"] });
       qc.invalidateQueries({ queryKey: ["my-profile"] });
       qc.invalidateQueries({ queryKey: ["shop-active-listing-count"] });
+      qc.invalidateQueries({ queryKey: ["showcase-usage"] });
+      qc.invalidateQueries({ queryKey: ["catalog-search"] });
     },
   });
 }
@@ -1201,7 +1205,7 @@ export function useReports() {
 export function useCreateReport() {
   const { session } = useAuth();
   return useMutation({
-    mutationFn: async (input: { targetType: "shop" | "product" | "post" | "user" | "flash_listing" | "product_review"; targetId: string; reason: string }) => {
+    mutationFn: async (input: { targetType: "shop" | "product" | "post" | "user" | "flash_listing" | "product_review" | "shop_review"; targetId: string; reason: string }) => {
       const { error } = await supabase.from("reports").insert({
         reporter_id: session!.user.id,
         target_type: input.targetType,
