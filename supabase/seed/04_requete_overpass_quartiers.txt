@@ -1,0 +1,6 @@
+[out:json][timeout:90];
+(
+  node["place"~"^(suburb|neighbourhood|quarter)$"]["name"](3.74,11.38,4.00,11.64);
+  node["place"~"^(suburb|neighbourhood|quarter)$"]["name"](3.94,9.58,4.18,9.86);
+);
+out;
