@@ -140,7 +140,7 @@ export default function CartePage() {
   const [selectedFlash, setSelectedFlash] = useState<any | null>(null);
   const areaDirty = !!pendingBounds;
   const [mapStyle, setMapStyle] = useState<MapStyle>(() => {
-    try { const v = localStorage.getItem("dm-map-style"); if (v === "plan" || v === "streets" || v === "satellite" || v === "relief") return v; } catch { /* stockage indisponible */ }
+    try { const v = localStorage.getItem("dm-map-style"); if (v === "plan" || v === "streets") return v; } catch { /* stockage indisponible */ }
     return "streets";
   });
   const chooseStyle = (m: MapStyle) => { setMapStyle(m); try { localStorage.setItem("dm-map-style", m); } catch { /* ignoré */ } };
@@ -566,7 +566,7 @@ export default function CartePage() {
         <>
         <div className="pointer-events-none absolute right-3 top-[9.5rem] z-[420] flex flex-col items-end gap-2">
           <div role="radiogroup" aria-label="Fond de carte" className="pointer-events-auto w-24 overflow-hidden rounded-2xl border border-border bg-card/95 shadow-lg backdrop-blur">
-            {([["plan", "map_stylePlan"], ["streets", "map_styleStreets"], ["satellite", "map_styleSatellite"], ["relief", "map_styleRelief"]] as const).map(([m, key]) => (
+            {([["plan", "map_stylePlan"], ["streets", "map_styleStreets"]] as const).map(([m, key]) => (
               <button
                 key={m}
                 role="radio"
@@ -599,7 +599,7 @@ export default function CartePage() {
           {geoStatus === "asking" ? <Loader2 size={20} className="animate-spin" /> : <Crosshair size={20} />}
         </button>
 
-        <p className="pointer-events-none absolute bottom-[0.15rem] left-2 z-[440] max-w-[60%] truncate text-[8px] text-foreground/60">{dt("map_credits")}</p>
+        <p className="pointer-events-none absolute bottom-[0.15rem] left-2 z-[440] max-w-[70%] text-[9px] leading-tight text-foreground/70">{dt("map_credits")}</p>
 
         {!selected && !routeFor && noAvailable && (
           <div className="absolute inset-x-3 bottom-[8.5rem] z-[460] rounded-2xl border border-border bg-card/95 p-3 text-center shadow-xl backdrop-blur animate-in fade-in">
