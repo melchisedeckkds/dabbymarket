@@ -69,6 +69,27 @@ export async function searchLandmarks(q: string, lat?: number, lng?: number): Pr
   return (data ?? []) as any[];
 }
 
+export type Zone = { code: string; name: string; kind: "city" | "district" | "pilot"; center_lat: number; center_lng: number; radius_m: number };
+
+/** Quartiers / villes trouvés par nom (positions réelles de la table geo_zones, jamais inventées). */
+export async function searchZones(q: string): Promise<Zone[]> {
+  const { data, error } = await supabase.rpc("map_search_zones", { p_query: q, p_limit: 4 });
+  if (error) return [];
+  return (data ?? []) as Zone[];
+}
+
+/** Zones pilotes à entourer sur la carte. */
+export function usePilotZones() {
+  return useQuery({
+    queryKey: ["pilot-zones"],
+    staleTime: 30 * 60_000,
+    queryFn: async (): Promise<Zone[]> => {
+      const { data, error } = await supabase.from("geo_zones").select("code,name,kind,center_lat,center_lng,radius_m").eq("kind", "pilot").eq("is_active", true);
+      return error ? [] : ((data ?? []) as Zone[]);
+    },
+  });
+}
+
 /** Droits de cartographe de l'utilisateur connecté (administrateur ou agent). */
 export function useMapperRole() {
   const { session, profile } = useAuth();

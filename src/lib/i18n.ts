@@ -137,7 +137,7 @@ export const translations = {
     marche_loadMore: "Charger plus",
 
     // Carte
-    carte_searchPlaceholder: "Rechercher une boutique…",
+    carte_searchPlaceholder: "Boutique, quartier ou repère…",
     carte_allCategories: "Toutes catégories",
     carte_allNeighborhoods: "Tous quartiers",
     carte_openNow: "Ouvert maintenant",
