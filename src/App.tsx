@@ -21,6 +21,7 @@ import { registerPwa } from "@/lib/pwa";
 const AuthPage = lazy(() => import("@/pages/Auth"));
 const MarchePage = lazy(() => import("@/pages/Marche"));
 const CartePage = lazy(() => import("@/pages/Carte"));
+const AgentCartePage = lazy(() => import("@/pages/AgentCarte"));
 const BoutiquePage = lazy(() => import("@/pages/Boutique"));
 const SantePage = lazy(() => import("@/pages/Sante"));
 const SanteDossierPage = lazy(() => import("@/pages/SanteDossier"));
@@ -92,6 +93,7 @@ function AppRoutes() {
             <Route path="/messages" element={<RequireAuth><MessagesPage /></RequireAuth>} />
             <Route path="/messages/:id" element={<RequireAuth><MessagesPage /></RequireAuth>} />
             <Route path="/compte" element={<RequireAuth><ComptePage /></RequireAuth>} />
+            <Route path="/agent-carte" element={<RequireAuth><AgentCartePage /></RequireAuth>} />
             <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
             <Route path="/recharge" element={<RequireAuth><RechargePage /></RequireAuth>} />
             <Route path="/suggestions" element={<RequireAuth><SuggestionsPage /></RequireAuth>} />
