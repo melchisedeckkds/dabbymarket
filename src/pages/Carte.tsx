@@ -24,7 +24,8 @@ import type { MapStyle } from "@/components/map-view";
 import { LandmarkSheet } from "@/components/landmark-sheet";
 import { LandmarkAddSheet } from "@/components/landmark-add-sheet";
 import { useMt } from "@/lib/dabbymap-i18n";
-import { CATEGORY_EMOJI, LANDMARK_MIN_ZOOM, searchLandmarks, useMapperRole, useNearbyLandmarks, type Landmark, type Viewport } from "@/lib/dabbymap";
+import { CATEGORY_EMOJI, LANDMARK_MIN_ZOOM, searchLandmarks, searchZones, useMapperRole, useNearbyLandmarks, usePilotZones, type Landmark, type Viewport, type Zone } from "@/lib/dabbymap";
+import type { FlyTarget } from "@/components/map-view";
 import { fetchRoute, type RouteResult, type ApproximateRoute } from "@/lib/routing";
 import { AvailabilityBadge, FreshnessText } from "@/components/availability-badge";
 import { SearchAlertButton } from "@/components/alert-button";
@@ -161,6 +162,10 @@ export default function CartePage() {
   const [addLandmarkOpen, setAddLandmarkOpen] = useState(false);
   const { data: landmarks = [] } = useNearbyLandmarks(viewport, showLandmarks && view === "map");
   const [lmResults, setLmResults] = useState<Landmark[]>([]);
+  const [zoneResults, setZoneResults] = useState<Zone[]>([]);
+  const { data: pilotZones = [] } = usePilotZones();
+  const [flyTarget, setFlyTarget] = useState<FlyTarget | null>(null);
+  const flyTo = (lat: number, lng: number, zoom: number) => setFlyTarget({ lat, lng, zoom, nonce: Date.now() });
   const [centered, setCentered] = useState(false);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const railRef = useRef<HTMLDivElement | null>(null);
@@ -172,12 +177,14 @@ export default function CartePage() {
   useEscapeToClose(!!selected, () => setSelected(null));
   useEffect(() => {
     const q = query.trim();
-    if (q.length < 2) { setLmResults([]); return; }
+    if (q.length < 2) { setLmResults([]); setZoneResults([]); return; }
     let cancelled = false;
     const id = setTimeout(async () => {
-      const r = await searchLandmarks(q, viewport?.lat, viewport?.lng);
-      if (!cancelled) setLmResults(r.map((x: any) => ({ ...x, importance: 3, access_hint: null })));
-    }, 350);
+      const [r, z] = await Promise.all([searchLandmarks(q, viewport?.lat, viewport?.lng), searchZones(q)]);
+      if (cancelled) return;
+      setLmResults(r.map((x: any) => ({ ...x, importance: 3, access_hint: null })));
+      setZoneResults(z);
+    }, 300);
     return () => { cancelled = true; clearTimeout(id); };
   }, [query, viewport?.lat, viewport?.lng]);
 
@@ -322,6 +329,49 @@ export default function CartePage() {
     [filtered, showAvail, availByLocation, lang, dt],
   );
 
+  // ---- Suggestions de la barre de recherche : lieux (quartiers, villes), repères, quartiers sans position ----
+  type Suggestion = { key: string; icon: string; title: string; sub: string; pick: () => void };
+  const clearSearch = () => { setQuery(""); setLmResults([]); setZoneResults([]); };
+  const suggestions: Suggestion[] = useMemo(() => {
+    const out: Suggestion[] = [];
+    const norm = (x: string) => x.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    zoneResults.forEach((z) => out.push({
+      key: `z-${z.code}`, icon: "🧭", title: z.name, sub: z.kind === "city" ? "Ville" : z.kind === "pilot" ? "Quartier · zone pilote" : "Quartier",
+      pick: () => {
+        setSelected(null); setSelectedFlash(null); setSelectedLandmark(null); setRouteFor(null); setRouteData(null);
+        flyTo(z.center_lat, z.center_lng, z.kind === "city" ? 13 : 15); clearSearch();
+      },
+    }));
+    lmResults.forEach((r) => out.push({
+      key: `l-${r.id}`, icon: CATEGORY_EMOJI[r.category_code] ?? "📍", title: r.name, sub: mt("lm_layer"),
+      pick: () => {
+        setSelected(null); setSelectedFlash(null); setRouteFor(null); setRouteData(null);
+        setSelectedLandmark(r); flyTo(r.lat, r.lng, 17); clearSearch();
+      },
+    }));
+    const q = norm(query.trim());
+    if (q.length >= 2) {
+      const covered = new Set(zoneResults.map((z) => norm(z.name)));
+      neighborhoodsFor("Yaoundé").concat(neighborhoodsFor("Douala")).forEach((n) => {
+        if (!norm(n).includes(q) || covered.has(norm(n))) return;
+        out.push({
+          key: `n-${n}`, icon: "🏘️", title: n, sub: "Quartier · boutiques",
+          pick: () => {
+            setNeighborhood(n);
+            const inside = shops.filter((x: any) => x.neighborhood === n);
+            if (inside.length) {
+              flyTo(inside.reduce((a: number, x: any) => a + x.lat, 0) / inside.length, inside.reduce((a: number, x: any) => a + x.lng, 0) / inside.length, 15);
+            } else {
+              toast.info(`${n} : aucune boutique pour l'instant, et ce quartier n'est pas encore localisé sur la carte.`);
+            }
+            clearSearch();
+          },
+        });
+      });
+    }
+    return out.slice(0, 7);
+  }, [zoneResults, lmResults, query, shops, mt]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const neighborhoodOptions = useMemo(() => {
     const fromShops = new Set(shopsWithDistance.map((s: any) => s.neighborhood).filter(Boolean));
     return fromShops.size ? Array.from(fromShops).sort() : neighborhoodsFor("Yaoundé");
@@ -462,6 +512,8 @@ export default function CartePage() {
                 if (lm) { setSelected(null); setSelectedFlash(null); setSelectedLandmark(lm); }
               }}
               onViewport={setViewport}
+              flyTarget={flyTarget}
+              pilotZones={pilotZones}
             />
           </Suspense>
         ) : (
@@ -480,6 +532,8 @@ export default function CartePage() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && suggestions[0]) { e.preventDefault(); suggestions[0].pick(); } }}
+              enterKeyHint="search"
               placeholder={t("carte_searchPlaceholder")}
               className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
@@ -490,20 +544,15 @@ export default function CartePage() {
             )}
           </div>
 
-          {lmResults.length > 0 && (
+          {suggestions.length > 0 && (
             <div className="pointer-events-auto overflow-hidden rounded-2xl border border-border bg-card/95 shadow-lg backdrop-blur">
-              {lmResults.map((r) => (
-                <button
-                  key={r.id}
-                  onClick={() => {
-                    setSelected(null); setSelectedFlash(null); setRouteFor(null); setRouteData(null);
-                    setSelectedLandmark(r); setFocus([r.lat, r.lng]); setQuery(""); setLmResults([]);
-                  }}
-                  className="flex w-full items-center gap-2 border-b border-border px-3 py-2 text-left text-sm last:border-b-0 active:bg-accent"
-                >
-                  <span>{CATEGORY_EMOJI[r.category_code] ?? "📍"}</span>
-                  <span className="truncate font-semibold">{r.name}</span>
-                  <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{mt("lm_layer")}</span>
+              {suggestions.map((sg) => (
+                <button key={sg.key} onClick={sg.pick} className="flex w-full items-center gap-2.5 border-b border-border px-3 py-2.5 text-left active:bg-accent last:border-b-0">
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent text-base">{sg.icon}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold">{sg.title}</span>
+                    <span className="block truncate text-[11px] text-muted-foreground">{sg.sub}</span>
+                  </span>
                 </button>
               ))}
             </div>
@@ -640,6 +689,9 @@ export default function CartePage() {
             </button>
             <button onClick={() => { setSelectedLandmark(null); setAddLandmarkOpen(true); }} className="block w-full border-t border-border px-2 py-2 text-center text-[11px] font-bold leading-tight text-foreground hover:bg-accent">
               ＋ {mt("lm_add")}
+            </button>
+            <button onClick={() => window.dispatchEvent(new Event("dm:open-guerite"))} className="flex w-full items-center justify-center gap-1.5 border-t border-border px-2 py-2 text-center text-[11px] font-bold leading-tight text-foreground hover:bg-accent">
+              <ShieldCheck size={13} className="text-primary" /> La Guérite
             </button>
             {mapperRole?.isAgent && (
               <Link to="/agent-carte" className="block w-full border-t border-border px-2 py-2 text-center text-[11px] font-bold leading-tight text-primary hover:bg-accent">
