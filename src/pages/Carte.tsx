@@ -21,6 +21,10 @@ import { GuestPrompt } from "@/components/guest-prompt";
 import { toast } from "sonner";
 import type { LatLngBounds, Map as LeafletMap } from "leaflet";
 import type { MapStyle } from "@/components/map-view";
+import { LandmarkSheet } from "@/components/landmark-sheet";
+import { LandmarkAddSheet } from "@/components/landmark-add-sheet";
+import { useMt } from "@/lib/dabbymap-i18n";
+import { CATEGORY_EMOJI, LANDMARK_MIN_ZOOM, searchLandmarks, useMapperRole, useNearbyLandmarks, type Landmark, type Viewport } from "@/lib/dabbymap";
 import { fetchRoute, type RouteResult, type ApproximateRoute } from "@/lib/routing";
 import { AvailabilityBadge, FreshnessText } from "@/components/availability-badge";
 import { SearchAlertButton } from "@/components/alert-button";
@@ -145,6 +149,18 @@ export default function CartePage() {
   });
   const chooseStyle = (m: MapStyle) => { setMapStyle(m); try { localStorage.setItem("dm-map-style", m); } catch { /* ignoré */ } };
   const mapRef = useRef<LeafletMap | null>(null);
+  // ---- DabbyMap : repères ----
+  const mt = useMt();
+  const { data: mapperRole } = useMapperRole();
+  const [showLandmarks, setShowLandmarks] = useState<boolean>(() => {
+    try { return localStorage.getItem("dm-map-landmarks") !== "0"; } catch { return true; }
+  });
+  const toggleLandmarks = () => setShowLandmarks((v) => { const n = !v; try { localStorage.setItem("dm-map-landmarks", n ? "1" : "0"); } catch { /* ignoré */ } return n; });
+  const [viewport, setViewport] = useState<Viewport | null>(null);
+  const [selectedLandmark, setSelectedLandmark] = useState<Landmark | null>(null);
+  const [addLandmarkOpen, setAddLandmarkOpen] = useState(false);
+  const { data: landmarks = [] } = useNearbyLandmarks(viewport, showLandmarks && view === "map");
+  const [lmResults, setLmResults] = useState<Landmark[]>([]);
   const [centered, setCentered] = useState(false);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const railRef = useRef<HTMLDivElement | null>(null);
@@ -154,6 +170,16 @@ export default function CartePage() {
   useEscapeToClose(showLocateSheet, () => setShowLocateSheet(false));
   useEscapeToClose(!!selectedFlash, () => setSelectedFlash(null));
   useEscapeToClose(!!selected, () => setSelected(null));
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) { setLmResults([]); return; }
+    let cancelled = false;
+    const id = setTimeout(async () => {
+      const r = await searchLandmarks(q, viewport?.lat, viewport?.lng);
+      if (!cancelled) setLmResults(r.map((x: any) => ({ ...x, importance: 3, access_hint: null })));
+    }, 350);
+    return () => { cancelled = true; clearTimeout(id); };
+  }, [query, viewport?.lat, viewport?.lng]);
 
   // Oriente la carte vers le pays de l'utilisateur (déduit de son numéro de
   // téléphone) dès l'ouverture, avant même qu'il n'active sa position
@@ -429,6 +455,13 @@ export default function CartePage() {
               mapStyle={mapStyle}
               onMapReady={(m) => { mapRef.current = m; }}
               onUserDrag={() => setCentered(false)}
+              landmarks={landmarks}
+              selectedLandmarkId={selectedLandmark?.id ?? null}
+              onSelectLandmark={(id) => {
+                const lm = landmarks.find((l) => l.id === id);
+                if (lm) { setSelected(null); setSelectedFlash(null); setSelectedLandmark(lm); }
+              }}
+              onViewport={setViewport}
             />
           </Suspense>
         ) : (
@@ -456,6 +489,25 @@ export default function CartePage() {
               </button>
             )}
           </div>
+
+          {lmResults.length > 0 && (
+            <div className="pointer-events-auto overflow-hidden rounded-2xl border border-border bg-card/95 shadow-lg backdrop-blur">
+              {lmResults.map((r) => (
+                <button
+                  key={r.id}
+                  onClick={() => {
+                    setSelected(null); setSelectedFlash(null); setRouteFor(null); setRouteData(null);
+                    setSelectedLandmark(r); setFocus([r.lat, r.lng]); setQuery(""); setLmResults([]);
+                  }}
+                  className="flex w-full items-center gap-2 border-b border-border px-3 py-2 text-left text-sm last:border-b-0 active:bg-accent"
+                >
+                  <span>{CATEGORY_EMOJI[r.category_code] ?? "📍"}</span>
+                  <span className="truncate font-semibold">{r.name}</span>
+                  <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{mt("lm_layer")}</span>
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className="pointer-events-auto flex gap-2 overflow-x-auto no-scrollbar">
             <FilterChip active={cat !== null}>
@@ -578,6 +630,26 @@ export default function CartePage() {
               </button>
             ))}
           </div>
+          <div className="pointer-events-auto w-24 overflow-hidden rounded-2xl border border-border bg-card/95 shadow-lg backdrop-blur">
+            <button
+              onClick={toggleLandmarks}
+              aria-pressed={showLandmarks}
+              className={cn("block w-full px-3 py-2 text-center text-xs font-bold transition-colors", showLandmarks ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-accent")}
+            >
+              📍 {mt("lm_layer")}
+            </button>
+            <button onClick={() => { setSelectedLandmark(null); setAddLandmarkOpen(true); }} className="block w-full border-t border-border px-2 py-2 text-center text-[11px] font-bold leading-tight text-foreground hover:bg-accent">
+              ＋ {mt("lm_add")}
+            </button>
+            {mapperRole?.isAgent && (
+              <Link to="/agent-carte" className="block w-full border-t border-border px-2 py-2 text-center text-[11px] font-bold leading-tight text-primary hover:bg-accent">
+                🛡️ {mt("lm_agentSpace")}
+              </Link>
+            )}
+          </div>
+          {showLandmarks && viewport && viewport.zoom < LANDMARK_MIN_ZOOM && (
+            <p className="pointer-events-none max-w-24 rounded-lg bg-card/90 px-2 py-1 text-center text-[10px] text-muted-foreground">{mt("lm_zoomHint")}</p>
+          )}
           <div className="pointer-events-auto flex flex-col overflow-hidden rounded-full border border-border bg-card/95 shadow-lg backdrop-blur">
             <button onClick={() => mapRef.current?.zoomIn()} aria-label={dt("map_zoomIn")} className="grid h-11 w-11 place-items-center active:bg-accent"><Plus size={20} /></button>
             <span className="mx-2 h-px bg-border" />
@@ -591,7 +663,7 @@ export default function CartePage() {
           title={geoStatus === "granted" && centered ? dt("map_uncenter") : dt("map_centerMe")}
           className={cn(
             "absolute right-3 z-[500] grid h-12 w-12 place-items-center rounded-full border border-border bg-card shadow-xl transition-all active:scale-95",
-            selected || routeFor ? "bottom-[19rem]" : "bottom-44",
+            selected || routeFor || selectedLandmark ? "bottom-[19rem]" : "bottom-44",
             geoStatus === "granted" && "border-primary text-primary",
             centered && "bg-primary text-primary-foreground",
           )}
@@ -667,6 +739,21 @@ export default function CartePage() {
 
         {selected && !routeFor && (
           <ShopSheet shop={selected} onClose={() => setSelected(null)} onRoute={(s) => { setRouteFor(s); if (s?.id) recordInteraction(s.id, null, "route"); }} userLocation={location} />
+        )}
+        {selectedLandmark && !selected && !selectedFlash && !routeFor && (
+          <LandmarkSheet
+            key={selectedLandmark.id}
+            landmark={selectedLandmark}
+            onClose={() => setSelectedLandmark(null)}
+            onRoute={(lm) => { setRouteFor({ id: undefined, name: lm.name, lat: lm.lat, lng: lm.lng, logo_url: null }); setSelectedLandmark(null); }}
+          />
+        )}
+        {addLandmarkOpen && (
+          <LandmarkAddSheet
+            userLocation={location}
+            mapCenter={viewport ? { lat: viewport.lat, lng: viewport.lng } : null}
+            onClose={() => setAddLandmarkOpen(false)}
+          />
         )}
         {selectedFlash && !routeFor && (
           <FlashSheet flash={selectedFlash} onClose={() => setSelectedFlash(null)} />
