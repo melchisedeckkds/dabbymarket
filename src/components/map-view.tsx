@@ -17,6 +17,55 @@ export const BASEMAP_STYLE_URL: Record<MapStyle, string> = {
 
 // Affiche le fond vectoriel (MapLibre) à l'intérieur de la carte Leaflet existante :
 // marqueurs, bulles, itinéraire et cadrage restent inchangés.
+const LM_EMOJI: Record<string, string> = {
+  repere_routier: "⭕", station_service: "⛽", commerce: "🛒", institution: "🏛️", education: "🎓",
+  sante: "➕", transport: "🚌", communautaire: "⛪", remarquable: "⭐", autre: "📍",
+};
+const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+
+function landmarkIcon(lm: LandmarkPin, active: boolean, label: boolean) {
+  const verified = lm.verification_status !== "unverified" && lm.verification_status !== "located";
+  const border = active ? "#d4af37" : verified ? "#2e9e5b" : "#9a9a9a";
+  const html = `<div style="display:flex;align-items:center;gap:4px;transform:translate(-13px,-13px);pointer-events:auto">`
+    + `<div style="width:26px;height:26px;border-radius:50%;background:#fff;border:2px ${verified || active ? "solid" : "dashed"} ${border};display:grid;place-items:center;font-size:14px;box-shadow:0 1px 4px rgba(0,0,0,.35)">${LM_EMOJI[lm.category_code] ?? "📍"}</div>`
+    + (label ? `<span style="max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:700;color:#222;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff">${esc(lm.name)}</span>` : "")
+    + `</div>`;
+  return cachedIcon(html, [label ? 140 : 26, 26], [0, 0]);
+}
+
+// Repères DabbyMap : discrets de loin (seuls les plus importants), plus nombreux en zoomant ;
+// les noms n'apparaissent qu'à fort zoom ou pour les repères majeurs.
+function LandmarkMarkers({ landmarks, selectedId, onSelect }: { landmarks: LandmarkPin[]; selectedId: string | null; onSelect?: (id: string) => void }) {
+  const map = useMap();
+  const [zoom, setZoom] = useState(map.getZoom());
+  useMapEvents({ zoomend: () => setZoom(map.getZoom()) });
+  return (
+    <>
+      {landmarks.map((lm) => (
+        <Marker
+          key={lm.id}
+          position={[lm.lat, lm.lng]}
+          icon={landmarkIcon(lm, selectedId === lm.id, zoom >= 17 || (zoom >= 15 && lm.importance >= 4))}
+          zIndexOffset={selectedId === lm.id ? 400 : -100}
+          eventHandlers={{ click: () => onSelect?.(lm.id) }}
+        />
+      ))}
+    </>
+  );
+}
+
+function ViewportBridge({ onViewport }: { onViewport: (v: { lat: number; lng: number; radiusM: number; zoom: number }) => void }) {
+  const map = useMap();
+  const emit = () => {
+    const c = map.getCenter();
+    const radiusM = c.distanceTo(map.getBounds().getNorthEast());
+    onViewport({ lat: c.lat, lng: c.lng, radiusM, zoom: map.getZoom() });
+  };
+  useEffect(() => { emit(); /* position initiale */ }, [map]); // eslint-disable-line react-hooks/exhaustive-deps
+  useMapEvents({ moveend: emit, zoomend: emit });
+  return null;
+}
+
 function VectorBasemap({ styleUrl }: { styleUrl: string }) {
   const map = useMap();
   useEffect(() => {
@@ -51,6 +100,10 @@ export type ShopPin = {
     /** photo de l'article (facultative) : déclenche la bulle « photo » */
     image?: string | null;
   };
+};
+
+export type LandmarkPin = {
+  id: string; name: string; category_code: string; lat: number; lng: number; importance: number; verification_status: string;
 };
 
 export type FlashPin = {
@@ -306,6 +359,10 @@ export default function MapView({
   mapStyle = "plan",
   onMapReady,
   onUserDrag,
+  landmarks,
+  selectedLandmarkId = null,
+  onSelectLandmark,
+  onViewport,
 }: {
   shops: ShopPin[];
   flashPins?: FlashPin[];
@@ -325,6 +382,10 @@ export default function MapView({
   mapStyle?: MapStyle;
   onMapReady?: (m: L.Map) => void;
   onUserDrag?: () => void;
+  landmarks?: LandmarkPin[];
+  selectedLandmarkId?: string | null;
+  onSelectLandmark?: (id: string) => void;
+  onViewport?: (v: { lat: number; lng: number; radiusM: number; zoom: number }) => void;
 }) {
   const [calloutIds, setCalloutIds] = useState<Set<string>>(new Set());
 
@@ -340,6 +401,8 @@ export default function MapView({
       <MapBridge onReady={onMapReady} onUserDrag={onUserDrag} />
       <FitToShops shops={shops} flashPins={flashPins} user={user} focus={focus} countryCenter={countryCenter} routeActive={!!route?.length} />
       <MapClickHandler onMapClick={onMapClick} />
+      {onViewport && <ViewportBridge onViewport={onViewport} />}
+      {landmarks && landmarks.length > 0 && <LandmarkMarkers landmarks={landmarks} selectedId={selectedLandmarkId} onSelect={onSelectLandmark} />}
       <CalloutPlanner shops={shops} onPlan={setCalloutIds} />
       {onAreaChange && <AreaSearchBridge onAreaChange={onAreaChange} />}
 
