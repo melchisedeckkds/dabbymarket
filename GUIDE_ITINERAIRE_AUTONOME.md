@@ -1,3 +1,5 @@
+> ⚠️ **OBSOLÈTE (26/11/2026)** — Les fonds Satellite/Relief/CARTO/OSM et le serveur OSRM public décrits ici ont été retirés (Lot 0 DabbyMap). Voir GUIDE_LOT0_DABBYMAP.md.
+
 # DabbyMarket — Mise à jour "Itinéraire autonome" (+ rattrapage découverte locale)
 
 ## ⚠️ Contexte important

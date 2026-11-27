@@ -1,3 +1,5 @@
+> ⚠️ **OBSOLÈTE (26/11/2026)** — Les 4 fonds de carte décrits ici (CARTO, OSM, Esri, OpenTopoMap) ont été remplacés par 2 fonds OpenFreeMap (Lot 0 DabbyMap). Voir GUIDE_LOT0_DABBYMAP.md.
+
 # Mise à jour — Refonte de la Carte
 
 Aucune migration SQL. Copier les fichiers du ZIP (mêmes chemins) puis `npm run build` et déployer.
