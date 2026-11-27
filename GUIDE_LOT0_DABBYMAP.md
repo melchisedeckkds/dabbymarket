@@ -1,4 +1,4 @@
-# DabbyMap — Lot 0 + base des repères + écrans (mise à jour du 27/11/2026)
+# DabbyMap — Lot 0 + base des repères + écrans + recherche de lieux (version du 27/11/2026, soir)
 
 Suivez les étapes dans l'ordre, sans en sauter. Durée : environ 40 minutes.
 **Tous les fichiers cités ci-dessous sont dans le ZIP, avec le même chemin.** Il n'y a rien d'autre à chercher ailleurs.
@@ -13,6 +13,7 @@ Ce paquet suppose que la mise à jour « DabbyMarket 2.0 » est déjà en ligne.
 ## Ce que ce paquet fait
 - **Carte** : fonds CARTO / OpenStreetMap / Esri / OpenTopoMap retirés, remplacés par 2 fonds OpenFreeMap (**Plan** et **Rues**). Satellite et Relief disparaissent.
 - **Repères DabbyMap** : bouton « 📍 Repères » (affiche/masque), icônes par type de lieu, noms visibles en zoomant, fiche d'un repère (nom, type, statut de vérification, indication d'accès, photo), recherche de repères dans la barre de recherche de la carte.
+- **Recherche de lieux** : tapez « etoudi » ou le nom d'un repère dans la barre de recherche ; touchez la suggestion (ou Entrée) et la carte se centre dessus. Un bouton **La Guérite** est maintenant dans la colonne de commandes à droite de la carte.
 - **Contribuer** : bouton « ＋ Ajouter un repère », « Signaler » et « Corriger » sur chaque repère (connexion requise). Les propositions des citoyens sont **validées par vos agents** avant publication.
 - **Espace agent** (`/agent-carte`) : file « À valider », liste « À vérifier sur place », vérification (confirmé / déplacé / fermé) et photo prise sur place.
 - **Base de données** : migration `0024` (PostGIS, zones, catégories, repères, droits, photos) + **52 repères d'Étoudi** issus d'OpenStreetMap, marqués « non vérifié ».
@@ -21,6 +22,7 @@ Ce paquet suppose que la mise à jour « DabbyMarket 2.0 » est déjà en ligne.
 ## ÉTAPE 1 — Supabase : exécuter la migration
 1. https://supabase.com/dashboard → votre projet → **SQL Editor** → **New query**.
 2. Ouvrez `supabase/migrations/0024_dabbymap.sql` du ZIP, copiez **tout**, collez, cliquez **Run**.
+   *(Si 0024 a déjà été exécutée chez vous, ne la relancez pas : passez à la requête de vérification, puis à 0025 ci-dessous.)*
 3. Attendez « Success ». Puis nouvelle requête :
    ```sql
    select (select count(*) from landmarks) as reperes,
@@ -28,6 +30,11 @@ Ce paquet suppose que la mise à jour « DabbyMarket 2.0 » est déjà en ligne.
           (select count(*) from landmark_categories) as categories;
    ```
    Attendu : `52 | 4 | 10`.
+4. Nouvelle requête : collez **tout** le contenu de `supabase/migrations/0025_dabbymap_recherche_zones.sql`, **Run**. Vérifiez avec :
+   ```sql
+   select name, kind from map_search_zones('etoudi');
+   ```
+   Attendu : une ligne `Étoudi | pilot`.
 - En cas d'erreur : **ne relancez pas**, copiez le message et envoyez-le-moi.
 
 ## ÉTAPE 2 — GitHub : déposer les fichiers
@@ -44,23 +51,39 @@ Pour chaque ligne : GitHub → votre dépôt → ouvrez le dossier indiqué → 
 | 7 | `src/components/map-view.tsx` | remplacer |
 | 8 | `src/components/landmark-sheet.tsx` | **nouveau** |
 | 9 | `src/components/landmark-add-sheet.tsx` | **nouveau** |
-| 10 | `src/lib/routing.ts` | remplacer |
-| 11 | `src/lib/availability-i18n.ts` | remplacer |
-| 12 | `src/lib/dabbymap.ts` | **nouveau** |
-| 13 | `src/lib/dabbymap-i18n.ts` | **nouveau** |
-| 14 | `supabase/functions/route/index.ts` | **nouveau** (facultatif aujourd'hui) |
-| 15 | `supabase/migrations/0024_dabbymap.sql` | **nouveau** (archivage) |
-| 16 | `supabase/rollbacks/ROLLBACK_0024.sql` | **nouveau** (archivage) |
-| 17 | `supabase/tests/test_0024.sql` | **nouveau** (archivage) |
-| 18 | `supabase/seed/reperes_etoudi.csv` | **nouveau** (archivage) |
-| 19 | `supabase/seed/modele_collecte_agents.csv` | **nouveau** (archivage) |
-| 20 | `GUIDE_LOT0_DABBYMAP.md` | **nouveau** (ce guide) |
+| 10 | `src/components/la-guerite-chat.tsx` | remplacer |
+| 11 | `src/lib/routing.ts` | remplacer |
+| 12 | `src/lib/availability-i18n.ts` | remplacer |
+| 13 | `src/lib/i18n.ts` | remplacer |
+| 14 | `src/lib/dabbymap.ts` | **nouveau** |
+| 15 | `src/lib/dabbymap-i18n.ts` | **nouveau** |
+| 16 | `supabase/functions/route/index.ts` | **nouveau** (facultatif aujourd'hui) |
+| 17 | `supabase/migrations/0024_dabbymap.sql` | **nouveau** (archivage) |
+| 18 | `supabase/migrations/0025_dabbymap_recherche_zones.sql` | **nouveau** (archivage) |
+| 19 | `supabase/rollbacks/ROLLBACK_0024.sql` | **nouveau** (archivage) |
+| 20 | `supabase/rollbacks/ROLLBACK_0025.sql` | **nouveau** (archivage) |
+| 21 | `supabase/tests/test_0024.sql` | **nouveau** (archivage) |
+| 22 | `supabase/tests/test_0025.sql` | **nouveau** (archivage) |
+| 23 | `supabase/seed/reperes_etoudi.csv` | **nouveau** (archivage) |
+| 24 | `supabase/seed/modele_collecte_agents.csv` | **nouveau** (archivage) |
+| 25 | `supabase/seed/04_requete_overpass_quartiers.txt` | **nouveau** (archivage) |
+| 26 | `GUIDE_LOT0_DABBYMAP.md` | **nouveau** (ce guide) |
 
-Les lignes 1 à 13 sont **obligatoires** : si une seule manque, Netlify affichera une erreur rouge.
+Les lignes 1 à 15 sont **obligatoires** : si une seule manque, Netlify affichera une erreur rouge.
 
 ## ÉTAPE 3 — Netlify
 1. Netlify → votre site → **Deploys** : attendez **Published** (vert). Si rouge : ouvrez le déploiement, copiez les 20 dernières lignes du journal, envoyez-les-moi.
 2. Site configuration → Environment variables : supprimez `VITE_CARTO_API_KEY` si elle existe (plus utilisée ; l'échéance CARTO du 1er décembre ne vous concerne plus).
+
+## ÉTAPE 3 bis — Vérifier que la NOUVELLE version est bien en ligne (important)
+Ouvrez la carte et regardez **le texte en bas à gauche** :
+- « © contributeurs OpenStreetMap · fond de carte OpenFreeMap » → **nouvelle version** ✅
+- « Données : OpenStreetMap, CARTO, Esri, OpenTopoMap » → **ancienne version** ❌ (et vous voyez 4 boutons : Plan, Rues, Satellite, Relief).
+
+Si c'est l'ancienne version :
+1. Netlify → Deploys : le dernier déploiement est-il **Published** et daté d'aujourd'hui ? S'il est **rouge**, envoyez-moi les 20 dernières lignes du journal. S'il n'y en a pas de récent, GitHub n'a pas reçu vos fichiers : refaites l'étape 2 (vérifiez que le message « Commit changes » a bien été validé).
+2. Si Netlify est vert et récent : l'application garde l'ancienne version en mémoire. Sur le téléphone, **fermez complètement** l'application, rouvrez-la, rechargez la carte deux fois. Si rien ne change : Réglages du navigateur → données du site → effacer, puis rouvrez.
+3. Avec l'ancienne version, **aucun repère** ne peut apparaître : c'est normal.
 
 ## ÉTAPE 4 — Donner des droits à vos agents (SQL Editor, une fois par agent)
 Chaque agent crée d'abord un compte DabbyMarket. Remplacez le numéro (format `+237…`, identique à son compte) :
@@ -80,6 +103,12 @@ Retrait : `update mapper_permissions set is_active = false where user_id = (sele
 4. Compte **citoyen** : « Signaler » → message envoyé. « ＋ Ajouter un repère » → « sera publié après validation ».
 5. Compte **agent** : ouvrez 🛡️ Espace agent → onglet « À valider » : validez/refusez. Onglet « À vérifier sur place » : 52 repères à confirmer.
 6. Agent sur le terrain : touchez un repère → **Ajouter une photo** (la photo est réduite automatiquement sur le téléphone) → **Vérifier sur place**.
+
+## ÉTAPE 6 (facultative, plus tard) — Quartiers de Yaoundé et Douala dans la recherche
+Aujourd'hui la recherche trouve **Étoudi, Yaoundé et Douala** (positions réelles). Pour que « Bastos », « Akwa »… centrent aussi la carte, il faut leurs vraies positions (OpenStreetMap) :
+1. Ouvrez https://overpass-turbo.eu → collez le contenu de `supabase/seed/04_requete_overpass_quartiers.txt` → **Exécuter**.
+2. **Exporter** → téléchargez les **données brutes OSM (JSON)** → envoyez-moi le fichier. Je prépare l'import.
+En attendant, taper un quartier de la liste applique le filtre « quartier » sur les boutiques.
 
 ## À SAVOIR (risques)
 - OpenFreeMap n'a **aucune garantie de disponibilité** ; en cas de panne, la carte reste utilisable sans fond.
