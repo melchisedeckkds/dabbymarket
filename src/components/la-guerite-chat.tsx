@@ -17,6 +17,11 @@ export function LaGueriteChat() {
   const { t, lang } = useApp();
   const { session } = useAuth();
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const h = () => setOpen(true);
+    window.addEventListener("dm:open-guerite", h);
+    return () => window.removeEventListener("dm:open-guerite", h);
+  }, []);
   const [showGuestPrompt, setShowGuestPrompt] = useState(false);
   useEscapeToClose(open, () => setOpen(false));
   const [msgs, setMsgs] = useState<Msg[]>([{ role: "assistant", content: t("laGuerite_intro") }]);
@@ -83,6 +88,7 @@ export function LaGueriteChat() {
         className={cn(
           "fixed bottom-24 right-4 z-40 grid h-14 w-14 place-items-center rounded-full gold-gradient shadow-xl shadow-primary/40 transition-transform active:scale-95",
           open && "scale-0 pointer-events-none",
+          location.pathname === "/carte" && "hidden", // sur la carte, le bouton est dans la colonne de commandes
         )}
       >
         <ShieldCheck size={22} strokeWidth={2.2} />

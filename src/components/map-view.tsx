@@ -1,4 +1,4 @@
-import { MapContainer, Marker, useMap, useMapEvents, CircleMarker, Polyline } from "react-leaflet";
+import { MapContainer, Marker, useMap, useMapEvents, CircleMarker, Circle, Polyline } from "react-leaflet";
 import L from "leaflet";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "@maplibre/maplibre-gl-leaflet";
@@ -23,14 +23,23 @@ const LM_EMOJI: Record<string, string> = {
 };
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 
+const LM_COLOR: Record<string, string> = {
+  repere_routier: "#7c5cff", station_service: "#e0412f", commerce: "#e08a00", institution: "#2f6fdb", education: "#1f9e8a",
+  sante: "#d6336c", transport: "#3b82a0", communautaire: "#8e5bb5", remarquable: "#c99a06", autre: "#6b7280",
+};
+
 function landmarkIcon(lm: LandmarkPin, active: boolean, label: boolean) {
   const verified = lm.verification_status !== "unverified" && lm.verification_status !== "located";
-  const border = active ? "#d4af37" : verified ? "#2e9e5b" : "#9a9a9a";
-  const html = `<div style="display:flex;align-items:center;gap:4px;transform:translate(-13px,-13px);pointer-events:auto">`
-    + `<div style="width:26px;height:26px;border-radius:50%;background:#fff;border:2px ${verified || active ? "solid" : "dashed"} ${border};display:grid;place-items:center;font-size:14px;box-shadow:0 1px 4px rgba(0,0,0,.35)">${LM_EMOJI[lm.category_code] ?? "📍"}</div>`
-    + (label ? `<span style="max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:700;color:#222;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff">${esc(lm.name)}</span>` : "")
+  const color = LM_COLOR[lm.category_code] ?? "#6b7280";
+  const size = active ? 38 : 32;
+  const ring = active ? "#d4af37" : color;
+  const html = `<div style="display:flex;align-items:center;gap:5px;transform:translate(-${size / 2}px,-${size / 2}px);pointer-events:auto">`
+    + `<div style="position:relative;width:${size}px;height:${size}px;border-radius:50%;background:${color}22;border:2.5px ${verified || active ? "solid" : "dashed"} ${ring};display:grid;place-items:center;font-size:${active ? 19 : 16}px;background-color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.4)">${LM_EMOJI[lm.category_code] ?? "📍"}`
+    + (verified ? `<span style="position:absolute;right:-4px;bottom:-4px;width:14px;height:14px;border-radius:50%;background:#2e9e5b;color:#fff;font-size:9px;line-height:14px;text-align:center;font-weight:900;border:1.5px solid #fff">✓</span>` : "")
+    + `</div>`
+    + (label ? `<span style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px;font-weight:700;color:#1b1b1b;background:rgba(255,255,255,.93);padding:1px 7px;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.3)">${esc(lm.name)}</span>` : "")
     + `</div>`;
-  return cachedIcon(html, [label ? 140 : 26, 26], [0, 0]);
+  return cachedIcon(html, [label ? 180 : size, size], [0, 0]);
 }
 
 // Repères DabbyMap : discrets de loin (seuls les plus importants), plus nombreux en zoomant ;
@@ -45,13 +54,24 @@ function LandmarkMarkers({ landmarks, selectedId, onSelect }: { landmarks: Landm
         <Marker
           key={lm.id}
           position={[lm.lat, lm.lng]}
-          icon={landmarkIcon(lm, selectedId === lm.id, zoom >= 17 || (zoom >= 15 && lm.importance >= 4))}
+          icon={landmarkIcon(lm, selectedId === lm.id, selectedId === lm.id || zoom >= 17 || (zoom >= 16 && lm.importance >= 2) || (zoom >= 15 && lm.importance >= 4))}
           zIndexOffset={selectedId === lm.id ? 400 : -100}
           eventHandlers={{ click: () => onSelect?.(lm.id) }}
         />
       ))}
     </>
   );
+}
+
+export type FlyTarget = { lat: number; lng: number; zoom: number; nonce: number };
+
+// Centre la carte sur un lieu choisi dans la recherche (quartier, repère…).
+function FlyToTarget({ target }: { target: FlyTarget | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (target) map.flyTo([target.lat, target.lng], target.zoom, { duration: 0.9 });
+  }, [target?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
 }
 
 function ViewportBridge({ onViewport }: { onViewport: (v: { lat: number; lng: number; radiusM: number; zoom: number }) => void }) {
@@ -363,6 +383,8 @@ export default function MapView({
   selectedLandmarkId = null,
   onSelectLandmark,
   onViewport,
+  flyTarget = null,
+  pilotZones,
 }: {
   shops: ShopPin[];
   flashPins?: FlashPin[];
@@ -386,6 +408,8 @@ export default function MapView({
   selectedLandmarkId?: string | null;
   onSelectLandmark?: (id: string) => void;
   onViewport?: (v: { lat: number; lng: number; radiusM: number; zoom: number }) => void;
+  flyTarget?: FlyTarget | null;
+  pilotZones?: { code: string; name: string; center_lat: number; center_lng: number; radius_m: number }[];
 }) {
   const [calloutIds, setCalloutIds] = useState<Set<string>>(new Set());
 
@@ -402,6 +426,11 @@ export default function MapView({
       <FitToShops shops={shops} flashPins={flashPins} user={user} focus={focus} countryCenter={countryCenter} routeActive={!!route?.length} />
       <MapClickHandler onMapClick={onMapClick} />
       {onViewport && <ViewportBridge onViewport={onViewport} />}
+      <FlyToTarget target={flyTarget} />
+      {pilotZones?.map((z) => (
+        <Circle key={z.code} center={[z.center_lat, z.center_lng]} radius={z.radius_m} interactive={false}
+          pathOptions={{ color: "#d4af37", weight: 2, dashArray: "6,8", fillColor: "#d4af37", fillOpacity: 0.05 }} />
+      ))}
       {landmarks && landmarks.length > 0 && <LandmarkMarkers landmarks={landmarks} selectedId={selectedLandmarkId} onSelect={onSelectLandmark} />}
       <CalloutPlanner shops={shops} onPlan={setCalloutIds} />
       {onAreaChange && <AreaSearchBridge onAreaChange={onAreaChange} />}
