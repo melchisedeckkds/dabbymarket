@@ -172,6 +172,10 @@
     font-family: inherit;
   }
 
+  .dark .leaflet-gl-layer {
+    filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9) saturate(0.6);
+  }
+
   .dark .leaflet-tile {
     filter: brightness(0.7) invert(1) contrast(0.9) hue-rotate(180deg) saturate(0.4) brightness(0.9);
   }
