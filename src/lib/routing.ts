@@ -1,14 +1,13 @@
-// Calcul d'itinéraire 100% autonome, sans quitter l'application et sans
-// dépendance payante : utilise OSRM (Open Source Routing Machine) sur
-// le réseau routier OpenStreetMap.
+import { supabase } from "./supabase";
+
+// Calcul d'itinéraire sans quitter l'application.
 //
-// ⚠️ Le serveur utilisé ici (router.project-osrm.org) est le serveur de
-// démonstration public, gratuit, mais à usage raisonnable uniquement
-// (limite officielle : ~1 requête/seconde, aucune garantie de
-// disponibilité). C'est suffisant pour un lancement, mais pas garanti
-// pour un usage à grande échelle — voir le guide de mise à jour pour la
-// recommandation d'auto-hébergement (toujours open source, gratuit à
-// coût d'un petit serveur).
+// Lot 0 (conformité) : le navigateur n'appelle plus le serveur public de démonstration d'OSRM.
+// Il appelle la fonction Edge « route » de votre projet Supabase, qui interroge le moteur
+// d'itinéraires que VOUS configurez (secret ROUTING_BASE_URL, compatible OSRM) et qui refuse
+// les zones où la navigation n'est pas encore ouverte (table geo_zones.navigation_enabled).
+// Tant qu'aucun moteur n'est configuré, l'application affiche une ligne directe clairement
+// signalée « approximative » — jamais un faux itinéraire. Voir GUIDE_LOT0_DABBYMAP.md.
 
 export type RoutePoint = { lat: number; lng: number };
 export type RouteProfile = "foot" | "driving" | "bike";
@@ -33,8 +32,6 @@ export type ApproximateRoute = {
   steps: [];
   approximate: true;
 };
-
-const OSRM_BASE = "https://router.project-osrm.org/route/v1";
 
 function haversineM(a: RoutePoint, b: RoutePoint) {
   const R = 6371000;
@@ -80,17 +77,16 @@ function modifierFr(m?: string) {
 
 /**
  * Calcule un itinéraire réel le long du réseau routier, en restant dans
- * l'application (aucun lien externe). En cas d'échec (réseau, zone non
- * couverte par les données OpenStreetMap locales, serveur de démo
- * indisponible), retombe sur une ligne directe entre les deux points —
+ * l'application (aucun lien externe). En cas d'échec (réseau, zone où la
+ * navigation n'est pas encore ouverte, moteur d'itinéraires non configuré ou indisponible), retombe sur une ligne directe entre les deux points —
  * jamais un écran vide ou une erreur bloquante.
  */
 export async function fetchRoute(from: RoutePoint, to: RoutePoint, profile: RouteProfile, lang: "fr" | "en" = "fr"): Promise<RouteResult | ApproximateRoute> {
   try {
-    const url = `${OSRM_BASE}/${profile}/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson&steps=true`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error(`OSRM ${res.status}`);
-    const data = await res.json();
+    const { data, error } = await supabase.functions.invoke("route", {
+      body: { profile, from: { lat: from.lat, lng: from.lng }, to: { lat: to.lat, lng: to.lng } },
+    });
+    if (error) throw error;
     const route = data?.routes?.[0];
     if (!route) throw new Error("no route");
     const coordinates: [number, number][] = route.geometry.coordinates.map(([lng, lat]: [number, number]) => [lat, lng]);
