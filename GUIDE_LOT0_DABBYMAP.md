@@ -1,68 +1,94 @@
-# DabbyMap — Lot 0 (conformité) + Lot 2 (base de données des repères)
+# DabbyMap — Lot 0 + base des repères + écrans (mise à jour du 27/11/2026)
 
-Suivez les étapes dans l'ordre. Ne sautez rien. Durée : environ 30 minutes.
+Suivez les étapes dans l'ordre, sans en sauter. Durée : environ 40 minutes.
+**Tous les fichiers cités ci-dessous sont dans le ZIP, avec le même chemin.** Il n'y a rien d'autre à chercher ailleurs.
 
-## Ce que ce paquet change
-- **Fonds de carte** : CARTO, OpenStreetMap (tuiles officielles), Esri et OpenTopoMap sont retirés. Il reste 2 fonds, **Plan** et **Rues**, fournis par OpenFreeMap (gratuit, sans clé). Les boutons Satellite et Relief disparaissent.
-- **Itinéraires** : l'application n'appelle plus le serveur public d'OSRM. Elle appelle votre fonction Edge `route`. **Tant que vous n'avez pas branché un moteur d'itinéraires, l'application trace une ligne directe marquée « approximative »**, comme avant en cas de panne.
-- **Base de données** : migration `0024` = PostGIS, zones, catégories, repères, contributions, droits des cartographes, photos, + **52 repères d'Étoudi** (OpenStreetMap, statut « non vérifié »).
-- Rien n'est supprimé dans vos données existantes (migration uniquement additive).
+## ÉTAPE 0 — Vérification avant de commencer (2 minutes)
+Ce paquet suppose que la mise à jour « DabbyMarket 2.0 » est déjà en ligne.
+1. Ouvrez votre dépôt GitHub → dossier `supabase` → `migrations`.
+2. Vous devez voir le fichier **`0023_securite_paiement.sql`**.
+   - Oui → continuez.
+   - Non → **arrêtez-vous** et écrivez-moi « il manque la 2.0 ». Je vous prépare un paquet complet. N'installez rien de ce ZIP avant.
+
+## Ce que ce paquet fait
+- **Carte** : fonds CARTO / OpenStreetMap / Esri / OpenTopoMap retirés, remplacés par 2 fonds OpenFreeMap (**Plan** et **Rues**). Satellite et Relief disparaissent.
+- **Repères DabbyMap** : bouton « 📍 Repères » (affiche/masque), icônes par type de lieu, noms visibles en zoomant, fiche d'un repère (nom, type, statut de vérification, indication d'accès, photo), recherche de repères dans la barre de recherche de la carte.
+- **Contribuer** : bouton « ＋ Ajouter un repère », « Signaler » et « Corriger » sur chaque repère (connexion requise). Les propositions des citoyens sont **validées par vos agents** avant publication.
+- **Espace agent** (`/agent-carte`) : file « À valider », liste « À vérifier sur place », vérification (confirmé / déplacé / fermé) et photo prise sur place.
+- **Base de données** : migration `0024` (PostGIS, zones, catégories, repères, droits, photos) + **52 repères d'Étoudi** issus d'OpenStreetMap, marqués « non vérifié ».
+- **Itinéraires** : plus d'appel au serveur public d'OSRM. Tant qu'aucun moteur n'est branché, la carte trace une ligne **pointillée « approximative »**.
 
 ## ÉTAPE 1 — Supabase : exécuter la migration
-1. Ouvrez https://supabase.com/dashboard → votre projet DabbyMarket.
-2. Menu de gauche : **SQL Editor** → **New query**.
-3. Ouvrez le fichier `supabase/migrations/0024_dabbymap.sql` (dans le ZIP), **copiez tout son contenu**, collez-le dans l'éditeur.
-4. Cliquez **Run**. Attendez « Success. No rows returned ».
-5. Vérification : nouvelle requête, collez puis Run :
+1. https://supabase.com/dashboard → votre projet → **SQL Editor** → **New query**.
+2. Ouvrez `supabase/migrations/0024_dabbymap.sql` du ZIP, copiez **tout**, collez, cliquez **Run**.
+3. Attendez « Success ». Puis nouvelle requête :
    ```sql
    select (select count(*) from landmarks) as reperes,
           (select count(*) from geo_zones) as zones,
           (select count(*) from landmark_categories) as categories;
    ```
-   Résultat attendu : `52 | 4 | 10`.
-- Si vous voyez une erreur, **ne relancez pas** : copiez le message et envoyez-le-moi.
+   Attendu : `52 | 4 | 10`.
+- En cas d'erreur : **ne relancez pas**, copiez le message et envoyez-le-moi.
 
 ## ÉTAPE 2 — GitHub : déposer les fichiers
-Dans le ZIP, les fichiers gardent leurs chemins. Pour chacun : GitHub → votre dépôt → ouvrez le dossier → **Add file → Upload files** (ou le crayon pour les modifier) → remplacez → **Commit changes**.
-Fichiers à remplacer/ajouter :
-1. `package.json` et `package-lock.json` (racine) — **les deux**, sinon Netlify échoue.
-2. `src/components/map-view.tsx`
-3. `src/pages/Carte.tsx`
-4. `src/lib/routing.ts`
-5. `src/lib/availability-i18n.ts`
-6. `src/styles.css`
-7. `supabase/functions/route/index.ts` (nouveau)
-8. `supabase/migrations/0024_dabbymap.sql`, `supabase/rollbacks/ROLLBACK_0024.sql`, `supabase/tests/test_0024.sql`, `supabase/seed/*.csv` (archivage, optionnels pour le site)
-9. `GUIDE_LOT0_DABBYMAP.md`, `GUIDE_ITINERAIRE_AUTONOME.md`, `README_MISE_A_JOUR_CARTE.md`
+Pour chaque ligne : GitHub → votre dépôt → ouvrez le dossier indiqué → **Add file → Upload files** → glissez le fichier du ZIP → **Commit changes**. (Si le dossier n'existe pas, créez-le en glissant le fichier avec son dossier.)
 
-## ÉTAPE 3 — Netlify : vérifier le déploiement
-1. Netlify → votre site → **Deploys**. Un déploiement démarre seul après votre commit.
-2. Attendez **Published** (vert). S'il est rouge : ouvrez-le, copiez les 20 dernières lignes du journal et envoyez-les-moi.
-3. **Supprimez la clé CARTO** : Site configuration → Environment variables → supprimez `VITE_CARTO_API_KEY` si elle existe (elle n'est plus utilisée ; l'échéance CARTO du 1er décembre ne vous concerne plus).
+| # | Fichier (chemin exact) | Action |
+|---|---|---|
+| 1 | `package.json` | remplacer |
+| 2 | `package-lock.json` | remplacer |
+| 3 | `src/App.tsx` | remplacer |
+| 4 | `src/styles.css` | remplacer |
+| 5 | `src/pages/Carte.tsx` | remplacer |
+| 6 | `src/pages/AgentCarte.tsx` | **nouveau** |
+| 7 | `src/components/map-view.tsx` | remplacer |
+| 8 | `src/components/landmark-sheet.tsx` | **nouveau** |
+| 9 | `src/components/landmark-add-sheet.tsx` | **nouveau** |
+| 10 | `src/lib/routing.ts` | remplacer |
+| 11 | `src/lib/availability-i18n.ts` | remplacer |
+| 12 | `src/lib/dabbymap.ts` | **nouveau** |
+| 13 | `src/lib/dabbymap-i18n.ts` | **nouveau** |
+| 14 | `supabase/functions/route/index.ts` | **nouveau** (facultatif aujourd'hui) |
+| 15 | `supabase/migrations/0024_dabbymap.sql` | **nouveau** (archivage) |
+| 16 | `supabase/rollbacks/ROLLBACK_0024.sql` | **nouveau** (archivage) |
+| 17 | `supabase/tests/test_0024.sql` | **nouveau** (archivage) |
+| 18 | `supabase/seed/reperes_etoudi.csv` | **nouveau** (archivage) |
+| 19 | `supabase/seed/modele_collecte_agents.csv` | **nouveau** (archivage) |
+| 20 | `GUIDE_LOT0_DABBYMAP.md` | **nouveau** (ce guide) |
 
-## ÉTAPE 4 — Contrôle sur le téléphone
-1. Ouvrez DabbyMarket → **Carte** (rechargez la page).
-2. Le fond doit s'afficher (Plan par défaut ou Rues). En bas à gauche : « © contributeurs OpenStreetMap · fond de carte OpenFreeMap ».
-3. Le panneau de droite n'a plus que **Plan** et **Rues**.
-4. Demandez un itinéraire vers une boutique : une ligne **pointillée grise « approximative »** est normale pour l'instant.
+Les lignes 1 à 13 sont **obligatoires** : si une seule manque, Netlify affichera une erreur rouge.
 
-## ÉTAPE 5 — Donner des droits à vos agents d'Étoudi
-Chaque agent doit avoir un compte DabbyMarket. Dans **SQL Editor**, remplacez le numéro (format `+237…`, identique à celui de son compte) puis Run, une fois par agent :
+## ÉTAPE 3 — Netlify
+1. Netlify → votre site → **Deploys** : attendez **Published** (vert). Si rouge : ouvrez le déploiement, copiez les 20 dernières lignes du journal, envoyez-les-moi.
+2. Site configuration → Environment variables : supprimez `VITE_CARTO_API_KEY` si elle existe (plus utilisée ; l'échéance CARTO du 1er décembre ne vous concerne plus).
+
+## ÉTAPE 4 — Donner des droits à vos agents (SQL Editor, une fois par agent)
+Chaque agent crée d'abord un compte DabbyMarket. Remplacez le numéro (format `+237…`, identique à son compte) :
 ```sql
 insert into mapper_permissions (user_id, permission_code, zone_id)
 select id, 'moderate', (select id from geo_zones where code = 'etoudi')
 from profiles where phone = '+237600000000';
 ```
-Vérification : `select count(*) from mapper_permissions;` → augmente de 1. « moderate » permet de créer, modifier, vérifier et valider **uniquement à Étoudi**.
-Pour retirer un droit : `update mapper_permissions set is_active = false where user_id = (select id from profiles where phone = '+237600000000');`
+Vérifiez : `select count(*) from mapper_permissions;` augmente de 1. Ce droit n'est valable **qu'à Étoudi**.
+Retrait : `update mapper_permissions set is_active = false where user_id = (select id from profiles where phone = '+237600000000');`
+(Le compte administrateur a automatiquement tous les droits.)
+
+## ÉTAPE 5 — Contrôle sur le téléphone (rechargez la page Carte)
+1. Fond de carte visible ; en bas : « © contributeurs OpenStreetMap · fond de carte OpenFreeMap ».
+2. Panneau de droite : **Plan / Rues**, puis **📍 Repères**, **＋ Ajouter un repère** et, pour un agent, **🛡️ Espace agent**.
+3. Zoomez sur Étoudi (zoom ≥ 13) : des icônes apparaissent ; plus vous zoomez, plus il y en a. Touchez-en une : la fiche s'ouvre.
+4. Compte **citoyen** : « Signaler » → message envoyé. « ＋ Ajouter un repère » → « sera publié après validation ».
+5. Compte **agent** : ouvrez 🛡️ Espace agent → onglet « À valider » : validez/refusez. Onglet « À vérifier sur place » : 52 repères à confirmer.
+6. Agent sur le terrain : touchez un repère → **Ajouter une photo** (la photo est réduite automatiquement sur le téléphone) → **Vérifier sur place**.
 
 ## À SAVOIR (risques)
-- **OpenFreeMap n'a aucune garantie de disponibilité.** Si le fond tombe en panne, la carte reste utilisable mais sans fond. Prévu : passage à votre propre hébergement (PMTiles) quand le trafic le justifie.
-- **Itinéraires réels** : il faut un moteur compatible OSRM que vous hébergez (un petit serveur) ; ensuite `supabase secrets set ROUTING_BASE_URL=https://…` et `supabase functions deploy route`. Je vous guiderai quand vous aurez décidé ; ne pointez **jamais** vers `router.project-osrm.org`.
-- Les 52 repères viennent d'OpenStreetMap et peuvent contenir des erreurs : vos agents doivent les confirmer sur place. La licence ODbL impose la mention affichée en bas de la carte — ne la retirez pas.
-- Le fond sombre est obtenu par un filtre de couleur sur le fond clair : il est correct mais pas parfait.
-- Le déploiement de la fonction Edge `route` est facultatif aujourd'hui.
+- OpenFreeMap n'a **aucune garantie de disponibilité** ; en cas de panne, la carte reste utilisable sans fond.
+- Les 52 repères viennent d'OpenStreetMap et peuvent être faux : à confirmer sur place. Ne retirez pas la mention OpenStreetMap (licence ODbL).
+- Les agents peuvent publier directement dans leur zone : choisissez-les avec soin.
+- Les photos sont limitées à 1 Mo ; seuls les agents peuvent en ajouter pour l'instant.
+- Itinéraires réels : il faut un moteur compatible OSRM que vous hébergez (je vous guiderai) ; n'utilisez jamais `router.project-osrm.org`.
+- Les tests de la migration ont été faits avec un PostGIS simulé : le premier vrai essai est l'étape 1.
 
 ## Retour arrière
 - Site : Netlify → Deploys → un déploiement précédent → **Publish deploy**.
-- Base : `supabase/rollbacks/ROLLBACK_0024.sql` (supprime les repères et contributions — exportez avant).
+- Base : `supabase/rollbacks/ROLLBACK_0024.sql` (supprime repères et contributions : exportez avant).
