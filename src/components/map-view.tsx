@@ -1,9 +1,31 @@
-import { MapContainer, TileLayer, Marker, useMap, useMapEvents, CircleMarker, Polyline } from "react-leaflet";
+import { MapContainer, Marker, useMap, useMapEvents, CircleMarker, Polyline } from "react-leaflet";
 import L from "leaflet";
-import { useEffect, useMemo, useRef, useState } from "react";
+import "maplibre-gl/dist/maplibre-gl.css";
+import "@maplibre/maplibre-gl-leaflet";
+import { useEffect, useRef, useState } from "react";
 import { STATUS_COLOR, escapeHtml, safeImageUrl, formatXAF, type EffectiveStatus } from "@/lib/availability";
 
-export type MapStyle = "plan" | "streets" | "satellite" | "relief";
+export type MapStyle = "plan" | "streets";
+
+// Fonds de carte : tuiles vectorielles OpenFreeMap (gratuit, sans clé, données © OpenStreetMap).
+// Conformité (Lot 0) : plus aucune tuile CARTO, tile.openstreetmap.org, Esri ni OpenTopoMap.
+// Pour passer plus tard à un hébergement propre (PMTiles), il suffit de changer ces deux adresses.
+export const BASEMAP_STYLE_URL: Record<MapStyle, string> = {
+  plan: "https://tiles.openfreemap.org/styles/positron",
+  streets: "https://tiles.openfreemap.org/styles/liberty",
+};
+
+// Affiche le fond vectoriel (MapLibre) à l'intérieur de la carte Leaflet existante :
+// marqueurs, bulles, itinéraire et cadrage restent inchangés.
+function VectorBasemap({ styleUrl }: { styleUrl: string }) {
+  const map = useMap();
+  useEffect(() => {
+    const layer = (L as any).maplibreGL({ style: styleUrl, interactive: false });
+    layer.addTo(map);
+    return () => { try { map.removeLayer(layer); } catch { /* carte déjà détruite */ } };
+  }, [map, styleUrl]);
+  return null;
+}
 
 export type GeoPoint = { lat: number; lng: number; accuracy?: number };
 
@@ -274,7 +296,7 @@ export default function MapView({
   onSelect,
   onSelectFlash,
   user,
-  theme = "dark",
+  theme: _theme = "dark",
   focus = null,
   countryCenter = null,
   onMapClick,
@@ -304,18 +326,7 @@ export default function MapView({
   onMapReady?: (m: L.Map) => void;
   onUserDrag?: () => void;
 }) {
-  // CARTO exige désormais une clé d'API sur ses fonds de carte gratuits
-  // (depuis fin août 2026 — sans lien avec DabbyMarket, ça touche tous les
-  // usages non-authentifiés de basemaps.cartocdn.com). La clé reste
-  // gratuite (5M requêtes/mois) : on l'ajoute si elle est configurée, et on
-  // dégrade proprement vers l'URL nue (filigrane visible mais carte
-  // fonctionnelle) sinon, plutôt que de casser le rendu.
   const [calloutIds, setCalloutIds] = useState<Set<string>>(new Set());
-  const cartoKey = import.meta.env.VITE_CARTO_API_KEY as string | undefined;
-  const tileUrl = useMemo(() => {
-    const base = theme === "dark" ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
-    return cartoKey ? `${base}?key=${cartoKey}` : base;
-  }, [theme, cartoKey]);
 
   return (
     <MapContainer
@@ -325,15 +336,7 @@ export default function MapView({
       attributionControl={false}
       className="absolute inset-0 h-full w-full"
     >
-      {mapStyle === "plan" && <TileLayer key="plan" url={tileUrl} attribution="&copy; OpenStreetMap &copy; CARTO" maxZoom={19} />}
-      {mapStyle === "streets" && <TileLayer key="streets" url="https://tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap" maxZoom={19} />}
-      {mapStyle === "satellite" && (
-        <>
-          <TileLayer key="sat" url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" attribution="Esri" maxZoom={19} />
-          <TileLayer key="sat-labels" url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}" attribution="Esri" maxZoom={19} />
-        </>
-      )}
-      {mapStyle === "relief" && <TileLayer key="relief" url="https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png" subdomains="abc" attribution="&copy; OpenStreetMap, SRTM | OpenTopoMap" maxZoom={17} />}
+      <VectorBasemap styleUrl={BASEMAP_STYLE_URL[mapStyle] ?? BASEMAP_STYLE_URL.plan} />
       <MapBridge onReady={onMapReady} onUserDrag={onUserDrag} />
       <FitToShops shops={shops} flashPins={flashPins} user={user} focus={focus} countryCenter={countryCenter} routeActive={!!route?.length} />
       <MapClickHandler onMapClick={onMapClick} />
